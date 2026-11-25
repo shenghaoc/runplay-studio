@@ -201,19 +201,8 @@ public struct FITDecoder {
             let altitude = decodeAltitude(record: record)
             let speed = decodeSpeed(record: record)
 
-            let heartRate: Double?
-            if let hr = record.heartRate, hr != FITParser.invalidUint8 {
-                heartRate = Double(hr)
-            } else {
-                heartRate = nil
-            }
-
-            let cadence: Double?
-            if let cad = record.cadence, cad != FITParser.invalidUint8 {
-                cadence = Double(cad)
-            } else {
-                cadence = nil
-            }
+            let heartRate = validUInt8Value(record.heartRate)
+            let cadence = validUInt8Value(record.cadence)
 
             let timestamp = resolvedTimestamps[index]
             let distance = record.distance.flatMap { value -> Double? in
@@ -240,6 +229,15 @@ public struct FITDecoder {
         )
     }
 
+    /// A one-byte record value as a number, or nil when it is absent or the
+    /// FIT invalid sentinel.
+    private static func validUInt8Value(_ value: UInt8?) -> Double? {
+        if let value, value != FITParser.invalidUint8 {
+            return Double(value)
+        }
+        return nil
+    }
+
     // MARK: - Session Selection
 
     /// Select the appropriate session from the decoded FIT file.
@@ -248,57 +246,14 @@ public struct FITDecoder {
             return .legacyFallback
         }
 
-        // Determine which sessions (by index) have GPS data in records.
-        //
-        // Sorting the GPS timestamps once and binary searching each session's
-        // range keeps this at O(r log r + s log r). The previous nested scan
-        // was O(records × sessions); the containment rule is unchanged, so a
-        // record inside two overlapping sessions still counts for both.
-        let gpsTimestamps = decodedFile.records
-            .compactMap { record -> UInt32? in
-                guard let lat = record.positionLat, let lon = record.positionLong else { return nil }
-                guard lat != FITParser.invalidCoordinate,
-                      lon != FITParser.invalidCoordinate
-                else {
-                    return nil
-                }
-                return FITParser.timestampIfValid(record.timestamp)
-            }
-            .sorted()
-
-        var sessionsWithRecordGPS = Set<Int>()
-        for (sessionIndex, session) in decodedFile.sessions.enumerated() {
-            guard let sessionStart = FITSessionAttribution.resolveStart(of: session) else {
-                continue
-            }
-            guard let candidate = firstTimestamp(atOrAfter: sessionStart, in: gpsTimestamps) else {
-                continue
-            }
-            // The derived end, not the literal `timestamp`: devices that write
-            // `session.timestamp == session.start_time` would otherwise count
-            // as GPS-less whenever the first fix arrives after the start, and
-            // a multi-session container would silently fall back to the
-            // whole-file route.
-            if let sessionEnd = FITSessionAttribution.resolveDeclaredEnd(of: session),
-               candidate > sessionEnd {
-                continue
-            }
-            sessionsWithRecordGPS.insert(sessionIndex)
-        }
+        let sessionsWithRecordGPS = sessionIndicesWithRecordGPS(in: decodedFile)
 
         // Find GPS-bearing sessions (either by start coords or by records with GPS)
         var gpsSessions: [(index: Int, session: FITSessionMessage, hasGPS: Bool)] = []
 
         for (index, session) in decodedFile.sessions.enumerated() {
             // A session has GPS if it has valid start coordinates
-            let hasValidCoordinates: Bool
-            if let lat = session.startPositionLat,
-               let lon = session.startPositionLong {
-                hasValidCoordinates = lat != FITParser.invalidCoordinate
-                    && lon != FITParser.invalidCoordinate
-            } else {
-                hasValidCoordinates = false
-            }
+            let hasValidCoordinates = hasValidStartCoordinates(session)
 
             // Or if it has records with GPS data
             let hasRecordGPS = hasValidCoordinates || sessionsWithRecordGPS.contains(index)
@@ -349,6 +304,57 @@ public struct FITDecoder {
         }
     }
 
+    /// The indexes of the sessions that contain a record with GPS data.
+    ///
+    /// Sorting the GPS timestamps once and binary searching each session's
+    /// range keeps this at O(r log r + s log r). The previous nested scan
+    /// was O(records × sessions); the containment rule is unchanged, so a
+    /// record inside two overlapping sessions still counts for both.
+    private static func sessionIndicesWithRecordGPS(in decodedFile: FITDecodedFile) -> Set<Int> {
+        let gpsTimestamps = decodedFile.records
+            .compactMap { record -> UInt32? in
+                guard let lat = record.positionLat, let lon = record.positionLong else { return nil }
+                guard lat != FITParser.invalidCoordinate,
+                      lon != FITParser.invalidCoordinate
+                else {
+                    return nil
+                }
+                return FITParser.timestampIfValid(record.timestamp)
+            }
+            .sorted()
+
+        var sessionsWithRecordGPS = Set<Int>()
+        for (sessionIndex, session) in decodedFile.sessions.enumerated() {
+            guard let sessionStart = FITSessionAttribution.resolveStart(of: session) else {
+                continue
+            }
+            guard let candidate = firstTimestamp(atOrAfter: sessionStart, in: gpsTimestamps) else {
+                continue
+            }
+            // The derived end, not the literal `timestamp`: devices that write
+            // `session.timestamp == session.start_time` would otherwise count
+            // as GPS-less whenever the first fix arrives after the start, and
+            // a multi-session container would silently fall back to the
+            // whole-file route.
+            if let sessionEnd = FITSessionAttribution.resolveDeclaredEnd(of: session),
+               candidate > sessionEnd {
+                continue
+            }
+            sessionsWithRecordGPS.insert(sessionIndex)
+        }
+        return sessionsWithRecordGPS
+    }
+
+    /// Whether the session records valid start coordinates.
+    private static func hasValidStartCoordinates(_ session: FITSessionMessage) -> Bool {
+        if let lat = session.startPositionLat,
+           let lon = session.startPositionLong {
+            return lat != FITParser.invalidCoordinate
+                && lon != FITParser.invalidCoordinate
+        }
+        return false
+    }
+
     /// First timestamp at or after `lowerBound` in a sorted array.
     /// Keeps session GPS detection logarithmic rather than a nested scan.
     private static func firstTimestamp(
@@ -385,16 +391,7 @@ public struct FITDecoder {
         events: [FITEventMessage],
         records: [FITRecordMessage]
     ) -> [RouteSegment] {
-        // Sort events by timestamp
-        let timerEvents = events.compactMap { event
-            -> (eventType: FITTimerEventType, timestamp: UInt32)? in
-            guard let eventType = event.timerEventType,
-                  let timestamp = FITParser.timestampIfValid(event.timestamp)
-            else {
-                return nil
-            }
-            return (eventType, timestamp)
-        }.sorted { $0.timestamp < $1.timestamp }
+        let timerEvents = sortedTimerEvents(events)
 
         guard !timerEvents.isEmpty else { return [] }
 
@@ -467,6 +464,22 @@ public struct FITDecoder {
         return segments
     }
 
+    /// The timer events that carry a type and a valid timestamp, sorted by
+    /// timestamp.
+    private static func sortedTimerEvents(
+        _ events: [FITEventMessage]
+    ) -> [(eventType: FITTimerEventType, timestamp: UInt32)] {
+        events.compactMap { event
+            -> (eventType: FITTimerEventType, timestamp: UInt32)? in
+            guard let eventType = event.timerEventType,
+                  let timestamp = FITParser.timestampIfValid(event.timestamp)
+            else {
+                return nil
+            }
+            return (eventType, timestamp)
+        }.sorted { $0.timestamp < $1.timestamp }
+    }
+
     /// Find the first record at or after an event timestamp.
     private static func firstRecordIndex(
         atOrAfter timestamp: UInt32,
@@ -519,39 +532,10 @@ public struct FITDecoder {
         usesTimerSegmentation: Bool,
         developerContext: FITDeveloperDataContext
     ) throws -> FITDecodedRouteResult {
-        var validRecords: [(record: FITRecordMessage, segmentIndex: Int)] = []
-        validRecords.reserveCapacity(records.count)
-        var invalidCoordinatePointCount = 0
-        var segmentCursor = segments.startIndex
-
-        for (index, record) in records.enumerated() {
-            guard let lat = record.positionLat, let lon = record.positionLong else {
-                invalidCoordinatePointCount += 1
-                continue
-            }
-            guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else {
-                invalidCoordinatePointCount += 1
-                continue
-            }
-
-            while segmentCursor < segments.endIndex,
-                  index > segments[segmentCursor].endIndex {
-                segmentCursor += 1
-            }
-            let segmentIndex: Int?
-            if segmentCursor < segments.endIndex,
-               index >= segments[segmentCursor].startIndex,
-               index <= segments[segmentCursor].endIndex {
-                segmentIndex = segmentCursor
-            } else {
-                segmentIndex = nil
-            }
-            if usesTimerSegmentation, segmentIndex == nil {
-                // Records between a stop and subsequent start belong to the pause.
-                continue
-            }
-            validRecords.append((record, segmentIndex ?? 0))
-        }
+        let (validRecords, invalidRecordCoordinateCount) = segmentedRecordsWithCoordinates(
+            records: records, segments: segments, usesTimerSegmentation: usesTimerSegmentation
+        )
+        var invalidCoordinatePointCount = invalidRecordCoordinateCount
 
         guard !validRecords.isEmpty else {
             return FITDecodedRouteResult(
@@ -603,19 +587,8 @@ public struct FITDecoder {
             let altitude = decodeAltitude(record: record)
             let speed = decodeSpeed(record: record)
 
-            let heartRate: Double?
-            if let hr = record.heartRate, hr != FITParser.invalidUint8 {
-                heartRate = Double(hr)
-            } else {
-                heartRate = nil
-            }
-
-            let cadence: Double?
-            if let cad = record.cadence, cad != FITParser.invalidUint8 {
-                cadence = Double(cad)
-            } else {
-                cadence = nil
-            }
+            let heartRate = validUInt8Value(record.heartRate)
+            let cadence = validUInt8Value(record.cadence)
 
             let developerValues = developerResolution.pointValues[index]
             if developerValues.powerWatts != nil {
@@ -705,6 +678,50 @@ public struct FITDecoder {
             invalidCoordinatePointCount: invalidCoordinatePointCount,
             developerFieldReport: developerReport
         )
+    }
+
+    /// The records with semicircle coordinates, each with its segment index,
+    /// and the number of records without. With timer segmentation, records
+    /// outside every segment belong to a pause and are left out.
+    private static func segmentedRecordsWithCoordinates(
+        records: [FITRecordMessage],
+        segments: [RouteSegment],
+        usesTimerSegmentation: Bool
+    ) -> (validRecords: [(record: FITRecordMessage, segmentIndex: Int)], invalidCoordinatePointCount: Int) {
+        var validRecords: [(record: FITRecordMessage, segmentIndex: Int)] = []
+        validRecords.reserveCapacity(records.count)
+        var invalidCoordinatePointCount = 0
+        var segmentCursor = segments.startIndex
+
+        for (index, record) in records.enumerated() {
+            guard let lat = record.positionLat, let lon = record.positionLong else {
+                invalidCoordinatePointCount += 1
+                continue
+            }
+            guard lat != FITParser.invalidCoordinate && lon != FITParser.invalidCoordinate else {
+                invalidCoordinatePointCount += 1
+                continue
+            }
+
+            while segmentCursor < segments.endIndex,
+                  index > segments[segmentCursor].endIndex {
+                segmentCursor += 1
+            }
+            let segmentIndex: Int?
+            if segmentCursor < segments.endIndex,
+               index >= segments[segmentCursor].startIndex,
+               index <= segments[segmentCursor].endIndex {
+                segmentIndex = segmentCursor
+            } else {
+                segmentIndex = nil
+            }
+            if usesTimerSegmentation, segmentIndex == nil {
+                // Records between a stop and subsequent start belong to the pause.
+                continue
+            }
+            validRecords.append((record, segmentIndex ?? 0))
+        }
+        return (validRecords, invalidCoordinatePointCount)
     }
 
     /// Provenance for the developer data indexes this session's records

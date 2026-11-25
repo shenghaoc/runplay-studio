@@ -165,6 +165,23 @@ public enum FITSessionAttribution {
     /// adjacent sessions share a boundary timestamp the boundary record belongs
     /// to the **later** session, so one sample can never contaminate both.
     public static func prepare(sessions: [FITSessionMessage]) -> FITPreparedSessions {
+        var resolutions = resolveRanges(sessions)
+        var sorted = sortedResolvedRanges(resolutions)
+        demoteSharedBoundaries(&sorted, resolutions: &resolutions)
+        let ambiguous = ambiguousIndexes(sorted)
+
+        let orderedRanges = sorted.filter { !ambiguous.contains($0.sourceIndex) }
+
+        return FITPreparedSessions(
+            resolutions: resolutions,
+            ambiguousIndexes: ambiguous,
+            orderedRanges: orderedRanges
+        )
+    }
+
+    /// Resolve each session's range from its start and its declared end, or
+    /// from the next session's start when the end is missing.
+    private static func resolveRanges(_ sessions: [FITSessionMessage]) -> [FITSessionBoundaryResolution] {
         let count = sessions.count
         var starts = [UInt32?](repeating: nil, count: count)
         var declaredEnds = [UInt32?](repeating: nil, count: count)
@@ -218,6 +235,14 @@ public enum FITSessionAttribution {
             ))
         }
 
+        return resolutions
+    }
+
+    /// The resolved ranges, sorted by start, then upper bound, then source index.
+    private static func sortedResolvedRanges(
+        _ resolutions: [FITSessionBoundaryResolution]
+    ) -> [FITSessionRange] {
+        let count = resolutions.count
         // Sort a copy for the boundary and overlap passes. Source order is
         // preserved separately in `resolutions` and drives display and staging.
         var sorted: [FITSessionRange] = []
@@ -235,10 +260,16 @@ public enum FITSessionAttribution {
             return lhs.sourceIndex < rhs.sourceIndex
         }
 
-        // Shared boundary: when an inclusive end coincides with another
-        // session's start, demote it to exclusive so the later session owns the
-        // sample. Ranges are start-sorted, so a start equal to a strictly later
-        // `end` value always belongs to a range that sorts after this one.
+        return sorted
+    }
+
+    /// Shared boundary: when an inclusive end coincides with another
+    /// session's start, demote it to exclusive so the later session owns the
+    /// sample. Ranges are start-sorted, so a start equal to a strictly later
+    /// `end` value always belongs to a range that sorts after this one.
+    private static func demoteSharedBoundaries(
+        _ sorted: inout [FITSessionRange], resolutions: inout [FITSessionBoundaryResolution]
+    ) {
         var startCounts: [UInt32: Int] = [:]
         for range in sorted {
             startCounts[range.start, default: 0] += 1
@@ -264,11 +295,14 @@ public enum FITSessionAttribution {
             resolutions[current.sourceIndex] = .resolved(demoted)
         }
 
-        // Material overlap. Because `sorted` is ascending by start, range i
-        // overlaps something iff it starts before the maximum upper bound of
-        // all preceding ranges, or the next range starts before its own upper
-        // bound. Any later overlapping range implies the immediate successor
-        // overlaps too, so these two O(1) checks are exhaustive.
+    }
+
+    /// Material overlap. Because `sorted` is ascending by start, range i
+    /// overlaps something iff it starts before the maximum upper bound of
+    /// all preceding ranges, or the next range starts before its own upper
+    /// bound. Any later overlapping range implies the immediate successor
+    /// overlaps too, so these two O(1) checks are exhaustive.
+    private static func ambiguousIndexes(_ sorted: [FITSessionRange]) -> Set<Int> {
         var ambiguous = Set<Int>()
         var prefixMaxUpper: UInt32 = 0
         for position in sorted.indices {
@@ -284,13 +318,7 @@ public enum FITSessionAttribution {
             prefixMaxUpper = max(prefixMaxUpper, current.upperExclusive)
         }
 
-        let orderedRanges = sorted.filter { !ambiguous.contains($0.sourceIndex) }
-
-        return FITPreparedSessions(
-            resolutions: resolutions,
-            ambiguousIndexes: ambiguous,
-            orderedRanges: orderedRanges
-        )
+        return ambiguous
     }
 
     // MARK: - Attribution walk
@@ -335,6 +363,31 @@ public enum FITSessionAttribution {
         return owners
     }
 
+    /// The indexes of the non-nil timestamps, sorted by timestamp and then
+    /// by index, or nil when cancelled.
+    private static func chronologicalOrder(
+        of timestamps: [UInt32?],
+        cancellationCheckStride stride: Int,
+        isCancelled: () -> Bool
+    ) -> [Int]? {
+        var sortable: [Int] = []
+        sortable.reserveCapacity(timestamps.count)
+        for index in timestamps.indices {
+            if index.isMultiple(of: stride), isCancelled() { return nil }
+            if timestamps[index] != nil {
+                sortable.append(index)
+            }
+        }
+        sortable.sort { lhs, rhs in
+                let left = timestamps[lhs] ?? 0
+                let right = timestamps[rhs] ?? 0
+                if left != right { return left < right }
+                return lhs < rhs
+            }
+        guard !isCancelled() else { return nil }
+        return sortable
+    }
+
     private static func attributeOwners(
         timestamps: [UInt32?],
         orderedRanges: [FITSessionRange],
@@ -360,21 +413,11 @@ public enum FITSessionAttribution {
         if chronological {
             order = Array(timestamps.indices)
         } else {
-            var sortable: [Int] = []
-            sortable.reserveCapacity(timestamps.count)
-            for index in timestamps.indices {
-                if index.isMultiple(of: stride), isCancelled() { return nil }
-                if timestamps[index] != nil {
-                    sortable.append(index)
-                }
+            guard let sortable = chronologicalOrder(
+                of: timestamps, cancellationCheckStride: stride, isCancelled: isCancelled
+            ) else {
+                return nil
             }
-            sortable.sort { lhs, rhs in
-                    let left = timestamps[lhs] ?? 0
-                    let right = timestamps[rhs] ?? 0
-                    if left != right { return left < right }
-                    return lhs < rhs
-                }
-            guard !isCancelled() else { return nil }
             order = sortable
         }
 
@@ -540,20 +583,10 @@ public enum FITSessionAttribution {
         return result
     }
 
-    private static func attributeLaps(
-        laps: [FITLapMessage],
-        sessions: [FITSessionMessage],
-        prepared: FITPreparedSessions,
-        cancellationCheckStride: Int,
-        isCancelled: () -> Bool
-    ) -> [[Int]]? {
-        let sessionCount = sessions.count
-        guard !isCancelled() else { return nil }
-        guard sessionCount > 0 else { return [] }
-        guard !laps.isEmpty else { return [[Int]](repeating: [], count: sessionCount) }
-        let stride = max(cancellationCheckStride, 1)
-
-        // One pass: lower-12-bit ordinal → lap array indexes.
+    /// One pass: lower-12-bit ordinal → lap array indexes. Nil when cancelled.
+    private static func lapIndexesByOrdinal(
+        _ laps: [FITLapMessage], stride: Int, isCancelled: () -> Bool
+    ) -> [Int: [Int]]? {
         var lapsByOrdinal: [Int: [Int]] = [:]
         for (arrayIndex, lap) in laps.enumerated() {
             if arrayIndex.isMultiple(of: stride), isCancelled() { return nil }
@@ -562,10 +595,24 @@ public enum FITSessionAttribution {
             }
             lapsByOrdinal[Int(rawIndex & 0x0FFF), default: []].append(arrayIndex)
         }
+        return lapsByOrdinal
+    }
 
+    /// The laps each session reliably claims by index metadata (the shared
+    /// completeness rule), keeping only claims that share no lap with another
+    /// session's claim, and the claiming session of each lap (-1 for none).
+    /// Nil when cancelled.
+    private static func exclusiveIndexClaims(
+        sessions: [FITSessionMessage],
+        lapsByOrdinal: [Int: [Int]],
+        lapCount: Int,
+        stride: Int,
+        isCancelled: () -> Bool
+    ) -> (indexClaims: [[Int]?], claimedBySession: [Int])? {
+        let sessionCount = sessions.count
         // Tentative index-metadata claims (shared completeness rule).
         var tentativeClaims = [[Int]?](repeating: nil, count: sessionCount)
-        var claimCount = [Int](repeating: 0, count: laps.count)
+        var claimCount = [Int](repeating: 0, count: lapCount)
         for sessionIndex in 0..<sessionCount {
             if sessionIndex.isMultiple(of: stride), isCancelled() { return nil }
             guard let matched = reliableIndexClaimedLaps(
@@ -582,7 +629,7 @@ public enum FITSessionAttribution {
 
         // Drop any claim that shares a lap with another session's claim.
         var indexClaims = [[Int]?](repeating: nil, count: sessionCount)
-        var claimedBySession = [Int](repeating: -1, count: laps.count)
+        var claimedBySession = [Int](repeating: -1, count: lapCount)
         for sessionIndex in 0..<sessionCount {
             if sessionIndex.isMultiple(of: stride), isCancelled() { return nil }
             guard let claim = tentativeClaims[sessionIndex] else { continue }
@@ -592,9 +639,14 @@ public enum FITSessionAttribution {
                 claimedBySession[arrayIndex] = sessionIndex
             }
         }
+        return (indexClaims, claimedBySession)
+    }
 
-        // Timestamp fallback only for sessions without reliable index metadata,
-        // and only over laps no session claimed by index.
+    /// Each lap's start time, or its timestamp when the start is invalid.
+    /// Nil when cancelled.
+    private static func lapTimestamps(
+        _ laps: [FITLapMessage], stride: Int, isCancelled: () -> Bool
+    ) -> [UInt32?]? {
         var lapTimestampValues: [UInt32?] = []
         lapTimestampValues.reserveCapacity(laps.count)
         for (index, lap) in laps.enumerated() {
@@ -604,12 +656,42 @@ public enum FITSessionAttribution {
                     ?? FITParser.timestampIfValid(lap.timestamp)
             )
         }
-        guard let owners = attributeOwners(
-            timestamps: lapTimestampValues,
-            orderedRanges: prepared.orderedRanges,
-            cancellationCheckStride: stride,
-            isCancelled: isCancelled
-        ) else {
+        return lapTimestampValues
+    }
+
+    private static func attributeLaps(
+        laps: [FITLapMessage],
+        sessions: [FITSessionMessage],
+        prepared: FITPreparedSessions,
+        cancellationCheckStride: Int,
+        isCancelled: () -> Bool
+    ) -> [[Int]]? {
+        let sessionCount = sessions.count
+        guard !isCancelled() else { return nil }
+        guard sessionCount > 0 else { return [] }
+        guard !laps.isEmpty else { return [[Int]](repeating: [], count: sessionCount) }
+        let stride = max(cancellationCheckStride, 1)
+
+        guard let lapsByOrdinal = lapIndexesByOrdinal(laps, stride: stride, isCancelled: isCancelled),
+              let claims = exclusiveIndexClaims(
+                  sessions: sessions, lapsByOrdinal: lapsByOrdinal, lapCount: laps.count,
+                  stride: stride, isCancelled: isCancelled
+              )
+        else {
+            return nil
+        }
+        let (indexClaims, claimedBySession) = claims
+
+        // Timestamp fallback only for sessions without reliable index metadata,
+        // and only over laps no session claimed by index.
+        guard let lapTimestampValues = lapTimestamps(laps, stride: stride, isCancelled: isCancelled),
+              let owners = attributeOwners(
+                  timestamps: lapTimestampValues,
+                  orderedRanges: prepared.orderedRanges,
+                  cancellationCheckStride: stride,
+                  isCancelled: isCancelled
+              )
+        else {
             return nil
         }
 

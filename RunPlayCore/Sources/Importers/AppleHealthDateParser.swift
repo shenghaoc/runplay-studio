@@ -101,12 +101,7 @@ enum AppleHealthDateParser {
     static func parse(_ utf8: [UInt8], at offset: Int) -> AppleHealthTimestamp? {
         guard offset >= 0, offset + fieldLength <= utf8.count else { return nil }
 
-        // Separator positions are part of the contract, so a misplacement is
-        // rejected rather than tolerated.
-        guard utf8[offset + 4] == dash, utf8[offset + 7] == dash else { return nil }
-        guard utf8[offset + 10] == space else { return nil }
-        guard utf8[offset + 13] == colon, utf8[offset + 16] == colon else { return nil }
-        guard utf8[offset + 19] == space else { return nil }
+        guard hasSeparators(utf8, at: offset) else { return nil }
 
         guard let year = digits(utf8, at: offset, count: 4),
               let month = digits(utf8, at: offset + 5, count: 2),
@@ -118,12 +113,8 @@ enum AppleHealthDateParser {
 
         guard let offsetSeconds = zoneOffset(utf8, at: offset + 20) else { return nil }
 
-        guard (1...12).contains(month) else { return nil }
-        guard day >= 1, day <= daysInMonth(year: year, month: month) else { return nil }
-        guard (0...23).contains(hour), (0...59).contains(minute) else { return nil }
-        // `60` would be a leap second. Apple Health does not write one, and
-        // silently rolling it into the next minute would misplace the sample.
-        guard (0...59).contains(second) else { return nil }
+        guard isValidCivilTime(year: year, month: month, day: day, hour: hour, minute: minute, second: second)
+        else { return nil }
 
         // Days since the Unix epoch, then seconds within that day. The civil
         // fields are local, so the instant is that reading minus the offset.
@@ -144,6 +135,32 @@ enum AppleHealthDateParser {
             minute: minute,
             second: second
         )
+    }
+
+    /// Separator positions are part of the contract, so a misplacement is
+    /// rejected rather than tolerated.
+    @inline(__always)
+    private static func hasSeparators(_ utf8: [UInt8], at offset: Int) -> Bool {
+        guard utf8[offset + 4] == dash, utf8[offset + 7] == dash else { return false }
+        guard utf8[offset + 10] == space else { return false }
+        guard utf8[offset + 13] == colon, utf8[offset + 16] == colon else { return false }
+        guard utf8[offset + 19] == space else { return false }
+        return true
+    }
+
+    /// Whether the civil fields name a real month, day of that month, hour,
+    /// minute and second.
+    @inline(__always)
+    private static func isValidCivilTime(
+        year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int
+    ) -> Bool {
+        guard (1...12).contains(month) else { return false }
+        guard day >= 1, day <= daysInMonth(year: year, month: month) else { return false }
+        guard (0...23).contains(hour), (0...59).contains(minute) else { return false }
+        // `60` would be a leap second. Apple Health does not write one, and
+        // silently rolling it into the next minute would misplace the sample.
+        guard (0...59).contains(second) else { return false }
+        return true
     }
 
     // MARK: - Civil-date arithmetic

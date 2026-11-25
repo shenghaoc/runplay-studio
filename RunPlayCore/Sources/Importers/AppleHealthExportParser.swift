@@ -700,23 +700,7 @@ private final class Delegate: NSObject, XMLParserDelegate {
             }
 
         case AppleHealthExportParser.Element.workout:
-            workoutDepth += 1
-            if workoutDepth == 1 {
-                flushPendingWorkout()
-                if let window = Self.window(
-                    from: attributeDict,
-                    typeKey: AppleHealthExportParser.Attribute.workoutActivityType
-                ) {
-                    currentWorkout = AppleHealthExportScan.WorkoutEntry(window: window)
-                    currentRoutePath = nil
-                } else {
-                    // Unreadable window: no dates, or dates that do not parse.
-                    // The workout is dropped, and counted under that reason so
-                    // the loss surfaces instead of vanishing; see
-                    // `AppleHealthExportScan.droppedWorkoutCount`.
-                    droppedWorkoutCount += 1
-                }
-            }
+            startWorkout(attributes: attributeDict)
 
         case AppleHealthExportParser.Element.workoutStatistics:
             if workoutDepth >= 1, var workout = currentWorkout {
@@ -725,44 +709,83 @@ private final class Delegate: NSObject, XMLParserDelegate {
             }
 
         case AppleHealthExportParser.Element.fileReference:
-            // FileReference is a child of WorkoutRoute, which is a child of
-            // Workout. Only the first per workout is kept: no workout in the
-            // measured export has more than one route, and a path is not an
-            // identity anyway.
-            if workoutDepth >= 1, currentWorkout != nil, currentRoutePath == nil,
-               let path = attributeDict[AppleHealthExportParser.Attribute.path] {
-                currentRoutePath = Self.resolveArchivePath(path)
-            }
+            startFileReference(attributes: attributeDict)
 
         case AppleHealthExportParser.Element.record:
-            if workoutDepth >= 1 {
-                nestedRecordCount += 1
-                let type = attributeDict[AppleHealthExportParser.Attribute.type] ?? "missing-type"
-                if type != AppleHealthExportParser.heartRateType {
-                    // The type is chosen by the document, so the map is capped: a
-                    // file with endless distinct types cannot grow it without bound.
-                    let key = ignoredNonHeartRateRecords[type] != nil
-                        || ignoredNonHeartRateRecords.count < AppleHealthExportScan.maximumIgnoredRecordTypes
-                        ? type
-                        : AppleHealthExportScan.otherIgnoredRecordTypes
-                    ignoredNonHeartRateRecords[key, default: 0] += 1
-                }
-                return
-            }
-            guard attributeDict[AppleHealthExportParser.Attribute.type]
-                == AppleHealthExportParser.heartRateType else { return }
-            heartRateRecordCount += 1
-            guard let reading = Self.reading(from: attributeDict) else { return }
-            index.append(reading)
-            // A filtered pass that reaches the ceiling has its answer, a
-            // refusal, so the rest of the document is not parsed. `runPass`
-            // reports the refusal ahead of the error `abortParsing()` sets.
-            if isFilteredPass, index.releasedByCeiling {
-                parser.abortParsing()
-            }
+            startRecord(parser, attributes: attributeDict)
 
         default:
             break
+        }
+    }
+
+    /// A top-level `Workout` flushes the previous one and opens a new entry,
+    /// or counts a dropped workout when its window cannot be read. A nested
+    /// one only deepens the nesting.
+    private func startWorkout(attributes attributeDict: [String: String]) {
+        workoutDepth += 1
+        if workoutDepth == 1 {
+            flushPendingWorkout()
+            if let window = Self.window(
+                from: attributeDict,
+                typeKey: AppleHealthExportParser.Attribute.workoutActivityType
+            ) {
+                currentWorkout = AppleHealthExportScan.WorkoutEntry(window: window)
+                currentRoutePath = nil
+            } else {
+                // Unreadable window: no dates, or dates that do not parse.
+                // The workout is dropped, and counted under that reason so
+                // the loss surfaces instead of vanishing; see
+                // `AppleHealthExportScan.droppedWorkoutCount`.
+                droppedWorkoutCount += 1
+            }
+        }
+    }
+
+    /// FileReference is a child of WorkoutRoute, which is a child of
+    /// Workout. Only the first per workout is kept: no workout in the
+    /// measured export has more than one route, and a path is not an
+    /// identity anyway.
+    private func startFileReference(attributes attributeDict: [String: String]) {
+        if workoutDepth >= 1, currentWorkout != nil, currentRoutePath == nil,
+           let path = attributeDict[AppleHealthExportParser.Attribute.path] {
+            currentRoutePath = Self.resolveArchivePath(path)
+        }
+    }
+
+    /// A `Record` inside a workout is only counted. A top-level heart-rate
+    /// record is indexed; every other top-level record is skipped.
+    private func startRecord(_ parser: XMLParser, attributes attributeDict: [String: String]) {
+        if workoutDepth >= 1 {
+            countNestedRecord(attributes: attributeDict)
+            return
+        }
+        guard attributeDict[AppleHealthExportParser.Attribute.type]
+            == AppleHealthExportParser.heartRateType else { return }
+        heartRateRecordCount += 1
+        guard let reading = Self.reading(from: attributeDict) else { return }
+        index.append(reading)
+        // A filtered pass that reaches the ceiling has its answer, a
+        // refusal, so the rest of the document is not parsed. `runPass`
+        // reports the refusal ahead of the error `abortParsing()` sets.
+        if isFilteredPass, index.releasedByCeiling {
+            parser.abortParsing()
+        }
+    }
+
+    /// Counts a record nested in a workout, and an ignored non-heart-rate one
+    /// under its type.
+    private func countNestedRecord(attributes attributeDict: [String: String]) {
+        nestedRecordCount += 1
+        let type = attributeDict[AppleHealthExportParser.Attribute.type] ?? "missing-type"
+        if type != AppleHealthExportParser.heartRateType {
+            // The type is chosen by the document, so the map is capped: a
+            // file with endless distinct types cannot grow it without bound.
+            let key = ignoredNonHeartRateRecords[type] != nil
+                || ignoredNonHeartRateRecords.count < AppleHealthExportScan.maximumIgnoredRecordTypes
+                ? type
+                : AppleHealthExportScan.otherIgnoredRecordTypes
+            ignoredNonHeartRateRecords[key, default: 0] += 1
         }
     }
 
