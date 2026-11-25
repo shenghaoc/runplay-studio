@@ -35,7 +35,7 @@ enum SwiftConstrainedDtwPathResult: Equatable, Sendable {
 /// transcribed verbatim into the test target and made self-contained.
 ///
 /// It deliberately calls nothing shared with the migrated implementation: not
-/// `RunPlayRouteAlignmentDtwBridge`, not the production aligner, and not
+/// `RunPlayRouteAlignmentDtwAdapter`, not the production aligner, and not
 /// `RouteAlignmentPolicy.maximumUnmatchedDistance`. Every formula it needs is
 /// reproduced locally so parity failures cannot be masked by a common helper.
 ///

@@ -23,7 +23,7 @@ import Foundation
 ///    consume.
 ///
 /// This type never calls `ConstrainedDynamicTimeWarpingAligner` or
-/// `RunPlayRouteAlignmentDtwBridge`, so a shared-helper regression cannot hide
+/// `RunPlayRouteAlignmentDtwAdapter`, so a shared-helper regression cannot hide
 /// a snapshot mismatch.
 ///
 /// The pre-migration cancellation checks that lived *inside* the DP sweep and

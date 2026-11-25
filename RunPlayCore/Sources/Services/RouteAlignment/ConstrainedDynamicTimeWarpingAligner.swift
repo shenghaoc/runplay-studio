@@ -4,8 +4,8 @@ import Foundation
 ///
 /// Swift builds the compact alignment samples, detects route direction, and
 /// turns the matched index path into blocks, diagnostics, and quality. The
-/// band-packed dynamic-programming solve itself runs in the C++23 engine
-/// through `RunPlayRouteAlignmentDtwBridge`: one native call per alignment
+/// band-packed dynamic-programming solve itself runs in the Swift engine
+/// through `RunPlayRouteAlignmentDtwAdapter`: one kernel call per alignment
 /// attempt, never one per row, cell, or sample.
 ///
 /// Complexity: O(samples × bandWidth) time and memory for active DP rows /
@@ -360,7 +360,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
         do {
             if profile != nil {
                 let start = ContinuousClock.now
-                solved = try RunPlayRouteAlignmentDtwBridge.solve(
+                solved = try RunPlayRouteAlignmentDtwAdapter.solve(
                     primary: primary,
                     comparison: comparison,
                     primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,
@@ -374,7 +374,7 @@ public struct ConstrainedDynamicTimeWarpingAligner: RouteComparisonAligning, Sen
                     to: ContinuousClock.now
                 )
             } else {
-                solved = try RunPlayRouteAlignmentDtwBridge.solve(
+                solved = try RunPlayRouteAlignmentDtwAdapter.solve(
                     primary: primary,
                     comparison: comparison,
                     primaryRouteDistanceMeters: samples.primaryRouteDistanceMeters,

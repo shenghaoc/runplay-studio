@@ -1324,16 +1324,10 @@ if [[ $heatmap_public_api_missing -eq 0 ]]; then
   pass "public personal heatmap API surface is unchanged"
 fi
 
-# Only the constrained-DTW bridge may invoke the path-solver symbol.
-DTW_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteAlignmentDtwBridge.swift"
+# Only the named test oracle may invoke the C++ constrained-DTW symbol.
+DTW_ORACLE_SOURCE="RunPlayCore/Tests/RunPlayCoreTests/RouteAlignmentDtwDifferentialTests.swift"
 DTW_ALIGNER_SOURCE="RunPlayCore/Sources/Services/RouteAlignment/ConstrainedDynamicTimeWarpingAligner.swift"
-
-if [[ ! -f "$DTW_BRIDGE_SOURCE" ]]; then
-  fail "missing production constrained-DTW bridge $DTW_BRIDGE_SOURCE"
-fi
-if [[ ! -f "$DTW_ALIGNER_SOURCE" ]]; then
-  fail "missing production aligner $DTW_ALIGNER_SOURCE"
-fi
+DTW_GROUPER_SOURCE="RunPlayCore/Sources/Services/RouteGrouping/RouteGroupingMatcher.swift"
 
 dtw_symbol_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*compute_constrained_dtw_path([^[:alnum:]_]|$)'
 dtw_symbol_positive=(
@@ -1341,7 +1335,7 @@ dtw_symbol_positive=(
   'let summary = runplay . compute_constrained_dtw_path(a, b, c, d, e, f, g, h, i, j)'
 )
 dtw_symbol_negative=(
-  'RunPlayRouteAlignmentDtwBridge.solve(primary: primary, comparison: comparison)'
+  'RunPlayRouteAlignmentDtwAdapter.solve(primary: primary, comparison: comparison)'
   'let text = "compute_constrained_dtw_path"'
   'func compute_constrained_dtw_path_helper() {}'
   'runplay.compute_personal_heatmap_workout_coverage(a, b, c, d, e, f, g)'
@@ -1364,7 +1358,7 @@ dtw_comment_fixture="$(mktemp "${TMPDIR:-/tmp}/runplay-dtw-comment.XXXXXX")"
 {
   printf '// runplay.compute_constrained_dtw_path(a, b, c, d)\n'
   printf '/* runplay.compute_constrained_dtw_path(a, b, c, d) */\n'
-  printf 'let solved = RunPlayRouteAlignmentDtwBridge.solve()\n'
+  printf 'let solved = RunPlayRouteAlignmentDtwAdapter.solve()\n'
 } > "$dtw_comment_fixture"
 if code_matches "$dtw_comment_fixture" "$dtw_symbol_re"; then
   dtw_symbol_matcher_ok=0
@@ -1378,45 +1372,43 @@ else
 fi
 
 dtw_symbol_leaks=()
+dtw_oracle_calls=0
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
-  case "$relative_swift_file" in
-    "$DTW_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
-  esac
   while IFS= read -r leak; do
-    [[ -n "$leak" ]] && dtw_symbol_leaks+=("$relative_swift_file:$leak")
+    [[ -z "$leak" ]] && continue
+    if [[ "$relative_swift_file" == "$DTW_ORACLE_SOURCE" ]]; then
+      dtw_oracle_calls=$((dtw_oracle_calls + 1))
+    else
+      dtw_symbol_leaks+=("$relative_swift_file:$leak")
+    fi
   done < <(strip_comments "$swift_file" | grep -En "$dtw_symbol_re" || true)
 done
 
-if [[ ${#dtw_symbol_leaks[@]} -eq 0 ]]; then
-  pass "compute_constrained_dtw_path is invoked only from the constrained-DTW bridge"
+if [[ ${#dtw_symbol_leaks[@]} -eq 0 && $dtw_oracle_calls -eq 1 ]]; then
+  pass "only the constrained-DTW test oracle calls the C++ solver, at one call site"
 else
+  [[ $dtw_oracle_calls -eq 1 ]] || fail "expected one C++ solver call in $DTW_ORACLE_SOURCE, found $dtw_oracle_calls"
   for leak in "${dtw_symbol_leaks[@]}"; do
-    fail "compute_constrained_dtw_path used outside the constrained-DTW bridge: $leak"
+    fail "compute_constrained_dtw_path used outside the constrained-DTW test oracle: $leak"
   done
 fi
 
-# The aligner owns policy, sampling, blocks, and diagnostics; the native solve
-# reaches it only through the pure Swift bridge.
-if [[ -f "$DTW_ALIGNER_SOURCE" ]]; then
-  if code_matches "$DTW_ALIGNER_SOURCE" '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
-    fail "ConstrainedDynamicTimeWarpingAligner must not reference C++ runplay symbols directly"
+# Both Core consumers must use the production Swift adapter.
+for source in "$DTW_ALIGNER_SOURCE" "$DTW_GROUPER_SOURCE"; do
+  if [[ ! -f "$source" ]]; then
+    fail "missing constrained-DTW consumer $source"
+  elif code_matches "$source" '(^|[^[:alnum:]_])runplay[[:space:]]*\.'; then
+    fail "$source must not reference C++ runplay symbols directly"
+  elif ! code_matches "$source" '(^|[^[:alnum:]_])RunPlayRouteAlignmentDtwAdapter[[:space:]]*\.[[:space:]]*solve[[:space:]]*\('; then
+    fail "$source must call the Swift constrained-DTW adapter"
   else
-    pass "ConstrainedDynamicTimeWarpingAligner stays free of direct C++ symbols"
+    pass "$source consumes the Swift constrained-DTW adapter, not C++"
   fi
+done
 
-  if code_matches "$DTW_ALIGNER_SOURCE" '(^|[^[:alnum:]_])RunPlayRouteAlignmentDtwBridge([^[:alnum:]_]|$)'; then
-    pass "ConstrainedDynamicTimeWarpingAligner consumes the pure Swift constrained-DTW bridge"
-  else
-    fail "ConstrainedDynamicTimeWarpingAligner must call RunPlayRouteAlignmentDtwBridge"
-  fi
-fi
-
-# The band-packed dynamic-programming solve now lives only in C++. These are
-# the identifiers the removed Swift implementation used for its packed row
-# layout, warp-run tracking, endpoint search, and reconstruction guard. Tests
-# keep a Swift path oracle, so this check is scoped to the production aligner.
+# Packed DP belongs in RunPlayEngine, not in the Core aligner. Exercise
+# the historical row-layout/traversal markers to catch an accidental second solver.
 removed_dp_marker_re='(^|[^[:alnum:]_])(rowStarts|rowEnds|warpRuns|bestEndCost|guardCounter|totalCells)([^[:alnum:]_]|$)'
 removed_dp_marker_positive=(
   'var rowStarts = [Int](repeating: 0, count: n)'
@@ -1457,7 +1449,7 @@ if [[ -f "$DTW_ALIGNER_SOURCE" ]]; then
   done < <(strip_comments "$DTW_ALIGNER_SOURCE" | grep -En "$removed_dp_marker_re" || true)
 
   if [[ ${#removed_dp_leaks[@]} -eq 0 ]]; then
-    pass "production Swift no longer implements the band-packed DP solve"
+    pass "Core aligner leaves the band-packed DP solve to RunPlayEngine"
   else
     for leak in "${removed_dp_leaks[@]}"; do
       fail "band-packed DP remnant in $DTW_ALIGNER_SOURCE: $leak"
