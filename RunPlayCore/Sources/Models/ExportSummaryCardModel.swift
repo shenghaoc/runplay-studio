@@ -59,7 +59,7 @@ public struct ExportSummaryCardModel: Sendable {
     ///
     /// Kept as a cached `DateFormatter` for the same reason as
     /// `RunWorkout.displayFormatter`: `Date.formatted(date:time:)` measures slower and
-    /// buys nothing here. See the 2026-07-30 entry in `.jules/bolt.md`. The
+    /// buys nothing here. The
     /// `.short` time style follows the locale's and the user's 12/24-hour
     /// convention ("14:30" in zh_CN, "2:30 PM" in en_US).
     private static let dateFormatter: DateFormatter = makeDateFormatter(

@@ -13,10 +13,8 @@ historical rapid-prototyping prompts that instructed agents to work directly on
 1. Source code, tests, `Package.swift`, and CI workflows are executable truth.
 2. This root `AGENTS.md` defines repository operating policy.
 3. Linked documentation provides detailed reference material.
-4. Tool entrypoints—including Claude, Gemini, Copilot, and Kiro steering—must
-   defer to this file and must not duplicate or override policy.
-5. `.jules/` files are advisory historical learnings. `.kiro/specs/` files are
-   task artifacts. Neither overrides this file or executable truth.
+4. Tool entrypoints such as `CLAUDE.md` and `GEMINI.md` import this file and
+   must not duplicate or override policy.
 
 When prose conflicts with implementation, inspect the implementation, tests,
 and CI. Correct durable documentation drift in the same change when relevant;
@@ -68,7 +66,7 @@ Before editing:
 - Each PR must declare its intended files or subsystem. Avoid unrelated nearby
   cleanup.
 - Serialize changes to shared coordination files: `AGENTS.md`, `Package.swift`,
-  CI workflows, `AppState`, shared architecture documents, and Kiro steering.
+  CI workflows, `AppState`, and shared architecture documents.
 - Do not overwrite unexplained changes or resurrect commits removed by a history
   cleanup.
 - After rebasing onto updated `main`, rerun the relevant verification suite.
@@ -313,43 +311,7 @@ See [docs/private-data.md](docs/private-data.md) and
   report the actual command or manual boundary instead.
 - Keep documentation tied to durable behavior, never transient branch status.
 
-## Kiro
-
-Kiro is the primary development environment for this repository. Codex,
-Claude Code, Gemini CLI, GitHub Copilot, and other agents remain supported
-through the same canonical contract.
-
-**Steering** (`.kiro/steering/`) supplies scoped Kiro context under this
-canonical policy. Steering files use `inclusion: always`, `inclusion:
-fileMatch`, or `inclusion: auto` to inject the right context at the right time.
-Keep durable repository facts in source, tests, `Package.swift`, CI, this file,
-or the relevant `docs/` reference; use `#[[file:...]]` references so steering
-does not become a competing copy.
-
-**Specs** (`.kiro/specs/`) are task artifacts: one spec per branch per PR.
-Keep requirements, design, and tasks scoped to the PR. Checked task boxes do
-not prove completion — tests and CI do. Specs must not contain private data,
-secrets, transient commit hashes, or repository-wide handoff status. Parallel
-spec tasks must not edit the same shared files concurrently.
-
-**Hooks** may be added to `.kiro/hooks/` when they provide genuine workflow
-value. Keep hooks narrowly scoped and document their trigger and action in the
-hook file; do not use hooks to bypass review or silently mutate shared files.
-
-**Kiro CLI custom agents** live in `.kiro/agents/`. The checked-in
-`runplay-cli.json` is a thin project adapter: it loads this file and workspace
-steering explicitly, exposes only the tools needed for repository work, and
-pre-approves read-only access only. Do not pin a model or duplicate repository
-policy in an agent configuration.
-
-**Durable learnings** live in `.jules/`: `bolt.md` for performance,
-`palette.md` for accessibility, `sentinel.md` for security. Add a concise
-dated entry only for a concrete reusable finding and its preventive action.
-Do not use these files for task status, speculative advice, or copied policy.
-Jules must use the lowercase `.jules/` directory only; never create or write
-to a case-variant such as `.Jules/`.
-
-### Lane selection
+## Lane selection
 
 A pull request runs only the lanes and test targets its changed paths can
 reach. `scripts/ci-select-lanes.sh` holds the table; the `changes` job in
@@ -360,7 +322,7 @@ each change reaches its own module and the modules downstream.
 
 | Changed path | Runs |
 |---|---|
-| `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `.kiro/**`, `prompts/**`, `LICENSE` | lint only |
+| `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `prompts/**`, `LICENSE` | lint only |
 | `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests, boundary validator |
 | `RunPlayPlatform/**` | macOS, Platform and Studio tests, boundary validator |
 | `RunPlayCore/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |

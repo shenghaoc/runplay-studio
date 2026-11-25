@@ -225,6 +225,34 @@ per-keystroke search.
   Transparency hardens materials via the system rather than custom hardcoded
   fills.
 
+## SwiftUI conventions
+
+- An icon-only button built from a bare `Image(systemName:)` gets both
+  `.help()` and `.accessibilityLabel()`. A `Label`-based button already exposes
+  its title; do not repeat it in `.accessibilityLabel()`.
+- Buttons in empty states, overlays and recovery banners are met without their
+  surrounding context: give each a contextual `.help()`, and an
+  `.accessibilityLabel()` where the title alone is ambiguous. Share one control
+  when the same recovery action appears in several states.
+- An empty state offers the action that resolves it inline, such as an import
+  button.
+- A clickable custom view is a `Button` with `.buttonStyle(.plain)`, not
+  `.onTapGesture`, so it takes Tab focus and Space/Return.
+- A required-name Create or Save control is disabled while the trimmed name is
+  empty, on the same control that owns `.defaultAction`. Create and inline Edit
+  keep separate drafts.
+- A `Menu` with its own `.accessibilityLabel` copies the label icon's
+  `NSImage.accessibilityDescription` into AXDescription; use
+  `DecorativeMenuSymbol.image(systemName:)` for that icon.
+- Name each picker from one source. A picker with a visible label gets no
+  `.accessibilityLabel`; use `accessibilityLabel(_:isEnabled:)` when the label
+  comes and goes, and omit the label view instead of using `labelsHidden()`.
+- A selectable menu row is a `Toggle`, so the menu draws the check mark and
+  reports `AXMenuItemMarkChar` (see `WorkoutRouteColorMode.menuCheck`).
+
+Verify AX behaviour with the Item Chooser or an AX attribute dump on a packaged
+bundle; SwiftUI modifiers do not always reach AppKit menus.
+
 ## Automated tests
 
 | Suite | Coverage |

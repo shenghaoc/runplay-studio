@@ -336,6 +336,130 @@ test spoken semantics without AppKit. See
 [accessibility-audit.md](accessibility-audit.md).
 
 
+### Swift concurrency
+
+Swift 6 strict concurrency is enforced across the package.
+
+- UI state in `AppState` and `ReplayController` is isolated to `@MainActor` and
+  currently uses Combine's `ObservableObject` / `@Published` model.
+- Workout-library persistence and mutations are serialized through
+  `WorkoutLibraryStoreActor` (an `actor` in `RunPlayCore`).
+- `WorkoutImportService` is an `actor` in `RunPlayCore`; parsing never runs on
+  `@MainActor`.
+- Values passed across actor boundaries must conform to `Sendable`; preserve
+  the explicit conformances on the relevant `RunPlayCore` models.
+
+Rules:
+
+- Do not add `@unchecked Sendable` merely to suppress a concurrency error.
+  Prefer checked conformance; when unchecked conformance is unavoidable for a
+  lock-protected or otherwise externally synchronized type, document and test
+  the invariant.
+- Never mutate `@MainActor` state from a background task directly. Use `await
+  MainActor.run { }` or `@MainActor` method dispatch.
+- Do not introduce `DispatchQueue` or `OperationQueue` — use Swift structured
+  concurrency (`async`/`await`, `Task`, `actor`) exclusively.
+- `RunPlayCore` must not import Combine. `RunPlayPlatform` may use Combine for
+  non-UI observable controllers only.
+
+View models currently use Combine observation:
+
+```swift
+@MainActor
+final class AppState: ObservableObject {
+    @Published var workouts: [RunWorkout] = []
+    @Published var selectedWorkout: RunWorkout?
+    // ...
+}
+```
+
+Match the live source when changing observation rather than migrating the
+architecture incidentally.
+
+`FileAppSessionStore` is an actor that performs the session JSON I/O off the
+main actor. For what the snapshot holds and when `AppSessionController` applies
+and writes it, see
+[Application scene and session restoration](#application-scene-and-session-restoration).
+
+Data crosses the layers in one direction, and every hop is an `await`:
+
+```
+WorkoutLibraryStoreActor (actor, RunPlayCore)
+    ↓ await
+AppState (@MainActor, RunPlayStudio)
+    ↓ @Published property
+SwiftUI View (implicit MainActor)
+```
+
+Never skip a layer or call across this chain without `await`.
+
+### UI layer (RunPlayStudio)
+
+`RunPlayStudio` owns all SwiftUI, Swift Charts, app lifecycle, and `@MainActor`
+UI state. Neither `RunPlayPlatform` nor `RunPlayCore` imports it.
+
+| Type | Role |
+|------|------|
+| `AppState` | Central `@MainActor ObservableObject` coordinator. Owns `workouts`, `selectedWorkout`, `workspaceMode`, favourites, `replayController`, comparison state, `personalHeatmap`, `workoutLibrary`, and library operation state. |
+| `AppWorkspaceMode` | Mutually exclusive top-level destinations; the cases are listed in [Workspace navigation](#workspace-navigation). |
+| `WorkoutLibraryViewModel` | All Runs search/filter/sort/tag state, smart-collection query context, multi-select, search documents, cancellable off-main queries, stale-result suppression. |
+| `WorkoutLibraryView` | All Runs table UI (Tags column), filters, tag/collection sheets, Modified/Revert/Update chrome, empty states, metadata editor. |
+| `WorkoutTagViews.swift` | Tag chips, single/bulk tag editors, Manage Tags, Save/Manage Smart Collections. |
+| `PersonalHeatmapViewModel` | Dedicated heatmap filters, background aggregation, stale-request suppression, and in-memory cache. |
+| `PersonalHeatmapView` | Heatmap workspace UI: filters, statistics, map areas, legend, empty/loading/error states. |
+| `ReplayController` | `@MainActor ObservableObject` wrapper around `PlaybackEngine`. Drives timeline, playback speed, and current route point. |
+| `ContentView` | Injected root view. Hosts the sidebar and detail split, owns the `.fileImporter` modifier, and delegates import/session lifecycle to app-owned state. |
+| `FITSessionImportSession` | `@MainActor ObservableObject` for one multi-session FIT import: security-scoped URL, scan result, selection, phase, progress, report. Holds descriptors only — never decoded FIT messages. |
+| `FITSessionImportView` | Import FIT Sessions review / progress / report sheet. Mirrors `StravaArchiveImportView` so keyboard, modal blocking, and dismissal behave identically. |
+| `WorkoutDetailView` | Detail host. Provides shared replay controls, metrics panel, and tab picker (Overview / Charts / Splits / Segments). |
+| `OverviewView` | Default landing tab. Embeds `MapReferenceView` / `RouteMapCanvas` and passes the current point index from `ReplayController`. |
+| `WorkoutRouteMapViewModel` | Single-workout metric route lines: off-main builds, cache, cancellation; does not rebuild on replay ticks. |
+| `RouteMapCanvas` | Shared SwiftUI `Map` surface for single-run, comparison, and heatmap maps. Owns `MapCameraPosition`, optional `RouteMapArea` fills, and the 2D/3D pitch toggle. |
+| `RouteMetricLegendView` | Focused numeric/no-data/accessibility legend for workout-relative route coloring. |
+| `MetricsChartView` | Pace, elevation, HR, speed charts. Drag-to-seek pauses playback and updates `ReplayController`. |
+| `CompareView` | Comparison host. Shows the comparison held in `AppState` (`comparisonWorkout`, `comparisonPair`), whose `WorkoutComparisonService` builds the results; Route-Aware alignment state comes from `AppState.comparisonViewModel` (`ComparisonViewModel`). |
+
+- `RunPlayStudioApp` holds `AppState` and `AppSessionController` as
+  `@StateObject`; `ContentView` and dependent views use `@ObservedObject` for
+  app state and replay state. Scene ownership and the session snapshot are
+  described in
+  [Application scene and session restoration](#application-scene-and-session-restoration).
+- Chart drag-to-seek: `WorkoutDetailView` pauses `ReplayController`, then calls
+  `seekToDistance(_:)` with the distance emitted by `MetricsChartView`.
+- `RouteMapCanvas` is the only map type (see [RouteMapCanvas](#routemapcanvas));
+  do not create a second one. Heatmap uses filled `MapPolygon`
+  areas under routes; heat intensity must not reuse primary-blue vs
+  comparison-orange semantics. Route metric coloring applies only to the
+  single-workout map; comparison stays blue/orange.
+- Heatmap aggregation runs off the main actor via `PersonalHeatmapViewModel`
+  and must not set global `LibraryOperationState` busy for the whole app.
+- PNG export follows [PNG Summary Export](#png-summary-export). It renders the
+  concrete `ExportSummaryCardView`, never at `NSScreen` scale, and never
+  screenshots `RouteMapCanvas` or requires Screen Recording. The export sheet
+  and `PNGSummaryExportViewModel` own configuration, preview, and cancellation;
+  keep that workflow out of `AppState`.
+- FIT import routing through `AppState.importWorkout(from:)` is described in
+  [Multi-session FIT import](#multi-session-fit-import).
+- Batch review sheets own their own progress. `LibraryOperationState`
+  `.importingArchive` and `.importingFITSessions` deliberately do **not** disable
+  the main window; `.scanningFITFile` does. `.scanningArchive` disables it
+  unless the Apple Health sheet owns the scan (`AppState.appleHealthScan` is
+  set), because that sheet shows the progress and can cancel.
+- `AppState.isModalPresentationActive` is the app-owned half of modal command
+  blocking; `ContentView` combines it with its view-local presentations.
+
+Where a concern belongs:
+
+| Concern | Layer |
+|---------|-------|
+| SwiftUI views and modifiers | RunPlayStudio |
+| `@MainActor` state, Combine publishers | RunPlayStudio |
+| PNG summary export | Split across layers; see [PNG Summary Export](#png-summary-export) |
+| Distance/pace calculations | RunPlayCore |
+| Route projection, segment detection | RunPlayCore |
+| Workout library file I/O, manifest, persistence | RunPlayCore |
+| Logical application-session file I/O and restoration | RunPlayStudio |
+
 ## PNG Summary Export
 
 PNG summary export is a **data-driven card**, not a screenshot of the live window.
@@ -989,6 +1113,21 @@ public protocol WorkoutImporting {
 
 The `WorkoutImporterFactory` dispatches by file extension. The SwiftUI file picker allows generic data files so `.tcx` and `.fit` files remain selectable even when the system does not declare dedicated UTIs; unsupported extensions are rejected by the importer factory.
 
+Every importer passes its output through `RoutePointSanitizer` before any
+analysis or persistence.
+
+Untrusted files are read defensively:
+
+- Every `XMLParser` over a user-supplied file sets
+  `shouldResolveExternalEntities = false`.
+- An entry point that reads a local file checks `url.isFileURL` before any
+  `Data(contentsOf:)`, path-based `FileManager` call or `Archive(url:)` open.
+  `FileManager.fileExists(atPath: url.path)` alone does not stop a non-file URL.
+- `CSVRow.escape` prefixes `'` to a non-numeric field whose first
+  non-whitespace character is `=`, `+`, `-` or `@`. Leading tabs and carriage
+  returns go through the whitespace-trimming slow path; never add whitespace
+  to `dangerousPrefixes`, which would escape ordinary fields such as `\tHello`.
+
 ### FIT activity decoding
 
 `FITParser` independently decodes the FIT binary stream into ordered standard
@@ -1262,6 +1401,25 @@ entry. Synchronous library migration uses the same deterministic processor
 without task cancellation because its recovery path must return every decodable
 workout.
 
+Hot-path conventions for route-sized work (importers, analysis, map and export
+preparation):
+
+- Accumulate in one inline `for` loop rather than chaining `map`, `compactMap`,
+  `filter`, `reduce` or `+` over a route array; each chained step allocates a
+  throwaway O(n) buffer or pays a closure call per element. When several
+  arrays derive from one source, build them in the same loop with
+  `reserveCapacity`. Find the first or last non-nil value with `for case let`,
+  not `compactMap { $0 }.first`.
+- Precompute a reduction that depends only on immutable construction inputs
+  (for example `FITDefinitionMessage.totalDataSize`) once in `init`.
+- Cache `DateFormatter` and `ISO8601DateFormatter` as `static let`, never one
+  per parse, cell or render. `DateFormatter` is `Sendable` under Swift 6.3 on
+  Darwin and Linux; `ISO8601DateFormatter` still needs `nonisolated(unsafe)`.
+  `Date.formatted(date:time:)` is slower than a cached formatter and has no
+  `.medium` date style, so it is not a drop-in replacement on model paths.
+  Measure before replacing a cached formatter, and test the style against a
+  reference `DateFormatter` in a non-English locale.
+
 ### GeoDistance
 
 Platform-neutral distance calculation using the Haversine formula, replacing CoreLocation:
@@ -1377,8 +1535,8 @@ only at its exact timestamp; no pause coordinates are synthesized.
 
 ### RouteMapCanvas
 
-`RouteMapCanvas` is the shared SwiftUI MapKit surface for single-run and
-comparison maps. It owns a `MapCameraPosition`, draws `MapPolyline` and
+`RouteMapCanvas` is the shared SwiftUI MapKit surface for single-run,
+comparison, and personal-heatmap maps. It owns a `MapCameraPosition`, draws `MapPolyline` and
 `Annotation` content, and exposes one 2D/3D camera toggle plus native MapKit
 zoom controls. The 2D/3D state changes the same map camera:
 
