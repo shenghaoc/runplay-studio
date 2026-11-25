@@ -302,7 +302,7 @@ final class WatchFolderCoordinatorTests: XCTestCase {
 
         coordinator.setAllPaused(false)
         await waitForCondition(timeout: 2) { recorder.recordedURLs.contains(file) }
-        XCTAssertEqual(recorder.recordedURLs, [file])
+        XCTAssertEqual(recorder.recordedURLs.map { $0.resolvingSymlinksInPath() }, [file.resolvingSymlinksInPath()])
         XCTAssertEqual(startedWatches.recordedURLs.count, 1)
     }
 
