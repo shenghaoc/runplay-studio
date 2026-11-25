@@ -114,6 +114,12 @@ not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
     engine call per profile build
   - the segment and personal-record window searches (`SegmentDetection`), one
     engine call per `SegmentDetector` invocation
+  - pace, heart-rate and power route-metric scale and bucket finalization
+    (`RouteMetricScaleBuckets`), one engine call per profile finalization.
+    Equal sort keys keep source order, so an equal-weight `+0`/`-0` metric tie
+    has one result on every platform; the C++ kernel's result for that tie
+    depends on its standard library. Corrected-elevation finalization stays in
+    Swift, as below
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or

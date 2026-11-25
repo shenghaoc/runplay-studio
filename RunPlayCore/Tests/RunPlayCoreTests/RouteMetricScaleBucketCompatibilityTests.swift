@@ -9,6 +9,47 @@ final class RouteMetricScaleBucketCompatibilityTests: XCTestCase {
 
     private let builder = RouteMetricProfileBuilder()
 
+    /// Keep this witness in the engine differential corpus. The C++ sort's
+    /// tie order can change the raw median bit pattern for equal-weight ±0.
+    func testSignedZeroTieIsReachableFromPowerProfile() throws {
+        let metrics: [Double] = (0..<32).map { index in
+            index == 26 ? -0.0 : [0.0, 1.0, 0.0, 2.0][index % 4]
+        }
+        let native = try bridge(
+            metrics: metrics.map(Optional.some),
+            weights: Array(repeating: 1, count: metrics.count)
+        )
+        let stableMedian = metrics.sorted()[15]
+        XCTAssertEqual(stableMedian.bitPattern, 0)
+
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = metrics.enumerated().flatMap { segment, power in
+            (0..<2).map { offset in
+                let index = segment * 2 + offset
+                return RoutePoint(
+                    timestamp: start.addingTimeInterval(Double(index)),
+                    latitude: 37.2 + Double(index) / 100_000,
+                    longitude: -122.1,
+                    distanceFromStartMeters: Double(segment + offset),
+                    elapsedSeconds: Double(index),
+                    powerWatts: power,
+                    routeSegmentIndex: segment
+                )
+            }
+        }
+        let workout = RunWorkout(routePoints: points)
+        let profile = try builder.build(
+            workout: workout,
+            context: WorkoutAnalysisContext(workout: workout),
+            mode: .power,
+            policy: RouteMetricColorPolicy(powerSmoothingHalfWindowMeters: 0, lowerQuantile: 0, upperQuantile: 1)
+        )
+        let result = try XCTUnwrap(profile.scale)
+        let original = try XCTUnwrap(native.scale)
+        XCTAssertEqual(profile.intervals.map { $0.metricValue?.bitPattern }, metrics.map { Optional($0.bitPattern) })
+        XCTAssertEqual(result.median.bitPattern, original.median.bitPattern)
+    }
+
     func testOriginMainNumericEdgeMatrix() throws {
         try assertParity(
             metrics: [],

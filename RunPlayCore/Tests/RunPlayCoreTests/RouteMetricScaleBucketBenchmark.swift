@@ -14,8 +14,8 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
         let memoryBefore = processMemorySnapshot()
         print("\n<!-- BEGIN RUNPLAY ROUTE METRIC SCALE BUCKET BENCHMARK -->")
         print("\n# Route metric scale/bucket benchmark\n")
-        print("| Fixture | Swift oracle ms | Complete bridge ms | Conversion ms | Output allocation ms | Native ms | Translation ms | Public materialization ms | Production profile ms |")
-        print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+        print("| Fixture | Swift oracle ms | Complete C++ bridge ms | Complete Swift adapter ms | Swift/C++ | Public materialization ms | Production profile ms |")
+        print("|---|---:|---:|---:|---:|---:|---:|")
 
         try runFixture(
             label: "R1 1k pace",
@@ -123,24 +123,24 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
         for _ in 0..<warmups {
             _ = oracle(metrics, weights, policy)
             _ = try bridge(metrics, weights, policy)
+            _ = try cppBridge(metrics, weights, policy)
         }
         let oracleTimes = timings(iterations: iterations) {
             _ = oracle(metrics, weights, policy)
         }
-        var reports: [RunPlayRouteMetricScaleBucketBenchmarkReport] = []
-        let bridgeTimes = try timings(iterations: iterations) {
-            reports.append(try RunPlayRouteMetricScaleBucketBridge.assignCollectingBenchmarkReport(
-                metricValues: metrics,
-                weightsMeters: weights,
-                lowerQuantile: policy.lowerQuantile,
-                upperQuantile: policy.upperQuantile,
-                minimumScaleSpan: mode == .correctedElevation ? policy.minimumElevationSpanMeters : 0,
-                minimumValidIntervalCount: policy.minimumValidIntervalCount,
-                bucketCount: policy.bucketCount,
-                cancellationCheckStride: policy.cancellationStride,
-                isCancelled: { false }
-            ))
+        // Interleave the two complete paths so drift and thermal state hit both.
+        var cppTimes: [Double] = []
+        var swiftTimes: [Double] = []
+        for iteration in 0..<iterations {
+            if iteration.isMultiple(of: 2) {
+                cppTimes += try timings(iterations: 1) { _ = try cppBridge(metrics, weights, policy) }
+                swiftTimes += try timings(iterations: 1) { _ = try bridge(metrics, weights, policy) }
+            } else {
+                swiftTimes += try timings(iterations: 1) { _ = try bridge(metrics, weights, policy) }
+                cppTimes += try timings(iterations: 1) { _ = try cppBridge(metrics, weights, policy) }
+            }
         }
+        let result = try bridge(metrics, weights, policy)
 
         let context = WorkoutAnalysisContext(workout: workout)
         let builder = RouteMetricProfileBuilder()
@@ -150,17 +150,13 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
         let productionTimes = try timings(iterations: iterations) {
             _ = try builder.build(workout: workout, context: context, mode: mode, policy: policy)
         }
-        let conversions = reports.map(\.inputConversionMilliseconds)
-        let allocations = reports.map(\.outputAllocationMilliseconds)
-        let native = reports.map(\.nativeKernelMilliseconds)
-        let translations = reports.map(\.outputTranslationMilliseconds)
-        let result = try XCTUnwrap(reports.last?.result)
+        let ratio = median(swiftTimes) / max(median(cppTimes), 1e-12)
         let materializationTimes = timings(iterations: iterations) {
             let intervals = materializeIntervals(metrics: metrics, weights: weights, result: result)
             withExtendedLifetime(intervals) {}
         }
-        print("| \(label) | \(format(median(oracleTimes))) | \(format(median(bridgeTimes))) | \(format(median(conversions))) | \(format(median(allocations))) | \(format(median(native))) | \(format(median(translations))) | \(format(median(materializationTimes))) | \(format(median(productionTimes))) |")
-        print("Native maximum \(label): \(format(native.max() ?? 0)) ms")
+        print("| \(label) | \(format(median(oracleTimes))) | \(format(median(cppTimes))) | \(format(median(swiftTimes))) | \(format(ratio)) | \(format(median(materializationTimes))) | \(format(median(productionTimes))) |")
+        print("SCALE_BUCKET_RATIO \(label) \(format(ratio)) (gate at most 1.100)")
     }
 
     private func materializeIntervals(
@@ -220,6 +216,22 @@ final class RouteMetricScaleBucketBenchmark: XCTestCase {
             bucketCount: policy.bucketCount,
             cancellationCheckStride: policy.cancellationStride,
             isCancelled: { false }
+        )
+    }
+
+    private func cppBridge(
+        _ metrics: [Double?],
+        _ weights: [Double],
+        _ policy: RouteMetricColorPolicy
+    ) throws -> RunPlayRouteMetricScaleBucketResult {
+        try RunPlayRouteMetricScaleBucketCppBridge.assign(
+            metricValues: metrics,
+            weightsMeters: weights,
+            lowerQuantile: policy.lowerQuantile,
+            upperQuantile: policy.upperQuantile,
+            minimumScaleSpan: 0,
+            minimumValidIntervalCount: policy.minimumValidIntervalCount,
+            bucketCount: policy.bucketCount
         )
     }
 

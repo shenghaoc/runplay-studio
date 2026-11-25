@@ -1769,17 +1769,30 @@ else
   fi
 fi
 
-# --- Route metric scale/bucket bridge ---------------------------------------
+# --- Route metric scale/bucket adapter --------------------------------------
 
-ROUTE_METRIC_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteMetricScaleBucketBridge.swift"
+ROUTE_METRIC_BRIDGE_SOURCE="RunPlayCore/Sources/Engine/RunPlayRouteMetricScaleBucketAdapter.swift"
+ROUTE_METRIC_ORACLE_CPP="RunPlayCore/Tests/RunPlayCoreTests/RouteMetricScaleBucketDifferentialTests.swift"
 ROUTE_METRIC_BUILDER_SOURCE="RunPlayCore/Sources/Services/RouteMetricProfileBuilder.swift"
 ROUTE_METRIC_LINE_SOURCE="RunPlayPlatform/Sources/Services/RouteMetricMapLineBuilder.swift"
 ROUTE_METRIC_ORACLE="RunPlayCore/Tests/RunPlayCoreTests/SwiftRouteMetricScaleBucketOracle.swift"
 
 if [[ -f "$ROUTE_METRIC_BRIDGE_SOURCE" ]]; then
-  pass "route metric scale/bucket bridge exists"
+  pass "route metric scale/bucket Swift engine adapter exists"
 else
-  fail "missing route metric scale/bucket bridge"
+  fail "missing route metric scale/bucket adapter"
+fi
+
+if [[ -e RunPlayCore/Sources/Interop/RunPlayRouteMetricScaleBucketBridge.swift ]]; then
+  fail "the C++ route metric bridge must live only in $ROUTE_METRIC_ORACLE_CPP"
+else
+  pass "no C++ route metric bridge remains in Core sources"
+fi
+
+if code_matches "$ROUTE_METRIC_BRIDGE_SOURCE" 'RouteMetricScaleBuckets[[:space:]]*\.[[:space:]]*assign[[:space:]]*\('; then
+  pass "route metric adapter calls the Swift kernel"
+else
+  fail "route metric adapter must call the Swift kernel"
 fi
 
 route_metric_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*assign_route_metric_scale_buckets([^[:alnum:]_]|$)'
@@ -1789,18 +1802,16 @@ for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   matches="$(strip_comments "$swift_file" | grep -En "$route_metric_native_re" || true)"
   [[ -z "$matches" ]] && continue
-  if [[ "$relative_swift_file" == "$ROUTE_METRIC_BRIDGE_SOURCE" ]]; then
+  if [[ "$relative_swift_file" == "$ROUTE_METRIC_ORACLE_CPP" ]]; then
     route_metric_native_sites=$((route_metric_native_sites + $(printf '%s\n' "$matches" | wc -l | tr -d ' ')))
-  elif [[ "$relative_swift_file" != RunPlayCore/Tests/* \
-       && "$relative_swift_file" != RunPlayPlatform/Tests/* \
-       && "$relative_swift_file" != RunPlayStudio/Tests/* ]]; then
+  else
     route_metric_native_leaks+=("$relative_swift_file:$matches")
   fi
 done
 if [[ ${#route_metric_native_leaks[@]} -eq 0 && $route_metric_native_sites -eq 1 ]]; then
-  pass "assign_route_metric_scale_buckets has exactly one Interop call site"
+  pass "only the route metric test oracle calls assign_route_metric_scale_buckets, at one call site"
 else
-  fail "assign_route_metric_scale_buckets must have exactly one call site in its Interop bridge"
+  fail "assign_route_metric_scale_buckets must have exactly one call site, in $ROUTE_METRIC_ORACLE_CPP"
 fi
 
 if code_matches "$ROUTE_METRIC_BUILDER_SOURCE" 'RunPlayRouteMetricScaleBucketBridge[[:space:]]*\.[[:space:]]*assign'; then
@@ -1866,9 +1877,9 @@ for swift_file in RunPlayCore/Sources/Models/*.swift RunPlayCore/Sources/Service
   fi
 done
 if [[ ${#route_metric_cpp_leaks[@]} -eq 0 ]]; then
-  pass "C++ route metric types stay in Interop"
+  pass "C++ route metric types stay in the test oracle"
 else
-  fail "C++ route metric types escaped Interop: ${route_metric_cpp_leaks[*]}"
+  fail "C++ route metric types escaped the test oracle: ${route_metric_cpp_leaks[*]}"
 fi
 
 if [[ -x scripts/run-route-metric-scale-bucket-benchmark.sh ]] \
