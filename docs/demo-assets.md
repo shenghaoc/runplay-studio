@@ -53,13 +53,15 @@ The output goes to `.build/demo-assets/`, which git ignores. `--output-dir`
 picks another directory, resolved from the current directory. Symlinks in
 existing ancestors are resolved before any creation or cleanup; only strict
 descendants of the repository's real `.build/` are accepted. The script also
-refuses a non-empty directory it did not create. `--skip-build` reuses the
+refuses a non-empty directory it did not create. The script builds the debug
+app from `RunPlayStudio.xcodeproj` with `xcodebuild` into `.build/xcode` and
+launches its executable with `--demo-assets`; `--skip-build` reuses that
 existing debug build.
 
 Requirements:
 
-- macOS with Xcode's Swift toolchain. An open-source toolchain earlier on
-  `PATH` cannot build the app.
+- macOS with Xcode (CI's Xcode 26.6 or newer) selected; the app builds only
+  through `xcodebuild`.
 - Network access for the MapKit basemaps. The videos need it; the summary
   cards do not.
 - Python 3 for realpath resolution before writing anything.

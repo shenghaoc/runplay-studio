@@ -6,13 +6,15 @@ bundled synthetic demo data.
 ## Prerequisites
 
 - macOS 26.0+
-- Xcode 26.6+ or Swift 6.3.3+ toolchain
+- A newer Xcode than 26.6 to run from the IDE (the app builds only through
+  `RunPlayStudio.xcodeproj`, and the Xcode 26.6 IDE cannot build its local
+  package; see AGENTS.md, Validation)
 - Clone the repository and build:
 
 ```bash
 git clone https://github.com/shenghaoc/runplay-studio.git
 cd runplay-studio
-open Package.swift
+open RunPlayStudio.xcodeproj
 ```
 
 Select the **RunPlayStudio** scheme, choose **My Mac**, and press **⌘R**.

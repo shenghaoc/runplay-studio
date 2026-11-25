@@ -3,7 +3,8 @@ name: macOS verification
 # Reusable macOS verification body, called by every lane so they can never
 # drift apart:
 #   - ci.yml      calls it once per PR when a changed path can reach macOS,
-#                 with the selector's test filter (engine + full-stack tests)
+#                 with the selector's choice of package tests (swift test)
+#                 and always the Studio tests (xcodebuild)
 #   - nightly.yml calls it with only the release compile (the rest of its
 #                 macOS work comes through ci.yml)
 #   - release.yml calls it with every suite enabled before packaging
@@ -22,15 +23,26 @@ on:
       engine:
         description: >-
           Build the Swift engine target on its own. Its tests run in the full
-          suite; with `full-tests` off this also runs them on their own.
+          package suite; with `full-tests` off this also runs them on their
+          own.
         type: boolean
         default: true
       full-tests:
-        description: "Run the full package test suite (swift test)."
+        description: >-
+          Run the package test suite (swift test): the engine, Core and
+          Platform tests. RunPlayStudio's tests are not package tests; see
+          `studio-tests`.
+        type: boolean
+        default: true
+      studio-tests:
+        description: >-
+          Build the RunPlayStudio app and its tests from RunPlayStudio.xcodeproj
+          and run them (xcodebuild build-for-testing, then
+          test-without-building).
         type: boolean
         default: true
       release-compile:
-        description: "Compile every test target in release configuration."
+        description: "Compile every test target, package and app, in release configuration."
         type: boolean
         default: false
       localization:
@@ -42,13 +54,15 @@ on:
           Scan every Swift source for engine imports on this runner. The PR
           lane and the nightly run the scan once, on Linux (ci.yml); only the
           release path sets this, so a release still validates the
-          boundaries. The macOS target graph is checked on every run.
+          boundaries. The macOS target graph and the Xcode project's links
+          are checked on every run.
         type: boolean
         default: false
       test-filter:
         description: >-
-          A `swift test --filter` regex that narrows the full-tests run; empty
-          runs every test target. The whole package is built either way.
+          A `swift test --filter` regex that narrows the package test run;
+          empty runs every package test target. It does not apply to the
+          Studio tests.
         type: string
         default: ""
 
@@ -60,20 +74,29 @@ jobs:
     name: Verify (macOS)
     runs-on: macos-26
     timeout-minutes: 60
+    env:
+      # The one build setting every xcodebuild call below passes (the scripts
+      # take it from scripts/lib/release-common.sh). Xcode 26.6 builds the
+      # local package's targets with -suppress-warnings, which clashes with the
+      # -warnings-as-errors of Package.swift's .treatAllWarnings(as: .error);
+      # Xcode 27.2 does not suppress them. It lowers no warning level.
+      XCODEBUILD_PACKAGE_WARNINGS: SWIFT_SUPPRESS_WARNINGS=NO
     steps:
       # A local action resolves from the workspace, so checkout must precede
       # the setup composite.
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-macos-build
 
-      # The engine boundary validator checks two things. Its target-graph
+      # The engine boundary validator checks three things. Its target-graph
       # check is the one only macOS can make: the SwiftPM graph on Linux omits
-      # RunPlayPlatform and RunPlayStudio (they exist only under
-      # `#if os(macOS)`), so a forbidden RunPlayEngine dependency added to
-      # either would be invisible there, and a source scan misses a manifest
-      # edge without an import. It parses the manifest only and takes seconds,
-      # so it runs on every call. The source scan is a static check that
-      # ci.yml runs on Linux; only the release path asks for it here.
+      # RunPlayPlatform (it exists only under `#if os(macOS)`), so a forbidden
+      # RunPlayEngine dependency added to it would be invisible there, and a
+      # source scan misses a manifest edge without an import. It also reads
+      # RunPlayStudio.xcodeproj: the app and its tests may link only the
+      # RunPlayCore and RunPlayPlatform products. It parses the manifest and
+      # the project only and takes seconds, so it runs on every call. The
+      # source scan is a static check that ci.yml runs on Linux; only the
+      # release path asks for it here.
       - name: Validate the engine target graph (macOS targets)
         if: ${{ !inputs.boundaries }}
         run: python3 scripts/validate-swift-engine-boundaries.py --graph-only
@@ -103,54 +126,116 @@ jobs:
         if: inputs.engine
         run: swift build --build-system swiftbuild --target RunPlayEngine
 
-      # The "Run tests" step already runs the engine tests, so the separate
-      # run is needed only when the full suite is off.
+      # The "Run package tests" step already runs the engine tests when the
+      # package suite is on and unfiltered; this separate run is needed only
+      # when the package suite is off.
       - name: Run Swift engine tests
         if: inputs.engine && !inputs.full-tests
-        run: swift test --build-system swiftbuild --filter RunPlayEngineTests
+        run: |
+          set -euo pipefail
+          log="${RUNNER_TEMP}/engine-tests.log"
+          status=0
+          swift test --build-system swiftbuild --filter RunPlayEngineTests 2>&1 | tee "${log}" || status=$?
+          python3 scripts/report-test-counts.py --label "Engine tests (swift test)" --swift-test-log "${log}"
+          exit "${status}"
 
       # Build and test are separate steps so the logs show where the time
-      # goes. Studio depends on every module upstream, so the whole package
-      # builds on every run; only the tests that run are narrowed.
+      # goes. This is the SwiftPM package: RunPlayEngine, RunPlayCore and
+      # RunPlayPlatform. RunPlayStudio is not in it; the xcodebuild steps
+      # below build and test the app.
       #
       # With `localization` on, this same build also extracts the localizable
-      # strings (-emit-localized-strings into ${RUNNER_TEMP}/stringsdata), so
-      # the String Catalogs check below reads this build's extraction instead
-      # of compiling the package a second time. The flag only adds
-      # .stringsdata outputs: the same targets build with the same warnings
-      # and the same tests (compared locally against a build without it).
-      - name: Build all targets and tests
-        if: inputs.full-tests
+      # strings of Core and Platform (-emit-localized-strings into
+      # ${RUNNER_TEMP}/stringsdata), so the String Catalogs check below reads
+      # this build's extraction instead of compiling the package a second
+      # time. The flag only adds .stringsdata outputs. A Studio-only change
+      # turns the package tests off; with `localization` on, the package
+      # products still build here, without tests, for that extraction.
+      - name: Build the package
+        if: inputs.full-tests || inputs.localization
         env:
+          FULL_TESTS: ${{ inputs.full-tests }}
           LOCALIZATION: ${{ inputs.localization }}
         run: |
           set -euo pipefail
           flags=()
+          if [[ "${FULL_TESTS}" == "true" ]]; then
+            flags+=(--build-tests)
+          fi
           if [[ "${LOCALIZATION}" == "true" ]]; then
             flags+=(-Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "${RUNNER_TEMP}/stringsdata")
             mkdir -p "${RUNNER_TEMP}/stringsdata"
           fi
-          swift build --build-system swiftbuild --build-tests "${flags[@]+"${flags[@]}"}"
+          swift build --build-system swiftbuild "${flags[@]+"${flags[@]}"}"
 
-      - name: Run tests
+      # The counts, not the exit code: `swift test --filter` exits 0 when the
+      # filter matches nothing. report-test-counts.py prints Executed,
+      # skipped and ran for XCTest and Swift Testing, and fails when no test
+      # ran.
+      - name: Run package tests
         if: inputs.full-tests
         env:
           TEST_FILTER: ${{ inputs.test-filter }}
-          RUNPLAY_SNAPSHOT_FAILURES_DIR: ${{ runner.temp }}/snapshot-failures
         run: |
           set -euo pipefail
+          log="${RUNNER_TEMP}/package-tests.log"
+          status=0
           if [[ -n "${TEST_FILTER}" ]]; then
-            swift test --build-system swiftbuild --skip-build --filter "${TEST_FILTER}"
+            swift test --build-system swiftbuild --skip-build --filter "${TEST_FILTER}" 2>&1 | tee "${log}" || status=$?
           else
-            swift test --build-system swiftbuild --skip-build
+            swift test --build-system swiftbuild --skip-build 2>&1 | tee "${log}" || status=$?
           fi
+          python3 scripts/report-test-counts.py --label "Package tests (swift test)" --swift-test-log "${log}"
+          exit "${status}"
+
+      # RunPlayStudio is the app target of RunPlayStudio.xcodeproj. The
+      # project references the package at the repository root as a local
+      # package, and its own Package.resolved (under project.xcworkspace)
+      # pins ZIPFoundation. -disableAutomaticPackageResolution makes a stale
+      # or drifted lockfile fail here instead of re-resolving. The derived
+      # data path is fixed and git-ignored, so the String Catalogs check can
+      # read this build's Studio extraction (the project sets
+      # SWIFT_EMIT_LOC_STRINGS = YES).
+      - name: Build the app and its tests (xcodebuild)
+        if: inputs.studio-tests || inputs.localization
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project RunPlayStudio.xcodeproj \
+            -scheme RunPlayStudio \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .build/xcode \
+            -disableAutomaticPackageResolution \
+            "${XCODEBUILD_PACKAGE_WARNINGS}"
+
+      # The scheme's Test action runs RunPlayStudioTests only, hosted by the
+      # app, with a throwaway library root. TEST_RUNNER_-prefixed variables
+      # reach the test process without the prefix.
+      - name: Run Studio tests (xcodebuild)
+        if: inputs.studio-tests
+        env:
+          TEST_RUNNER_RUNPLAY_SNAPSHOT_FAILURES_DIR: ${{ runner.temp }}/snapshot-failures
+        run: |
+          set -euo pipefail
+          result="${RUNNER_TEMP}/studio-tests.xcresult"
+          status=0
+          xcodebuild test-without-building \
+            -project RunPlayStudio.xcodeproj \
+            -scheme RunPlayStudio \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .build/xcode \
+            -disableAutomaticPackageResolution \
+            -resultBundlePath "${result}" || status=$?
+          python3 scripts/report-test-counts.py --label "Studio tests (xcodebuild)" --xcresult "${result}"
+          exit "${status}"
 
       # A failing image snapshot (SnapshotAssertion) writes its actual render
       # and a diff image there; without them a difference that appears only
-      # on the runner could not be inspected. One call per workflow run sets
-      # full-tests, so the name only needs the attempt.
+      # on the runner could not be inspected. One call per workflow run runs
+      # the Studio tests, so the name only needs the attempt.
       - name: Upload snapshot failures
-        if: failure() && inputs.full-tests
+        if: failure() && inputs.studio-tests
         uses: actions/upload-artifact@v7
         with:
           name: snapshot-failures-attempt-${{ github.run_attempt }}
@@ -164,7 +249,7 @@ jobs:
       # synthetic map preparer, caught only after a benchmark failed in
       # #121) slip through a debug-only CI. Build only; nothing is executed
       # in release.
-      - name: Build test targets in release
+      - name: Build package test targets in release
         if: inputs.release-compile
         # `swift build -c release --build-tests` is not a valid gate: it
         # fails on clean main with a pre-existing testability error
@@ -178,21 +263,33 @@ jobs:
         # not being in scope; with them present it passes.
         run: swift test --build-system swiftbuild -c release --filter RUNPLAY_CI_RELEASE_BUILD_COMPILE_ONLY
 
-      # Every String Catalog must list exactly the strings its module's
-      # source uses (no missing, no stale keys), each translated into zh-Hans
-      # and zh-Hant with matching placeholders. When the full suite ran, the
-      # check reads the extraction of the "Build all targets and tests" step,
-      # so there is no second build. A caller without the full suite (it has
-      # no shared build) gets the script's own build, in its own scratch path
-      # (.build-localization), which never invalidates the shared .build.
-      - name: Check String Catalogs
-        if: inputs.localization
-        env:
-          FULL_TESTS: ${{ inputs.full-tests }}
+      # The same check for the app's tests. `swift test -c release` compiles
+      # with testability on, which `@testable import` needs; the project's
+      # Release configuration has it off, so this build turns it on, as the
+      # package check does. Its own derived data keeps the Debug build intact.
+      - name: Build Studio test target in release (xcodebuild)
+        if: inputs.release-compile
         run: |
           set -euo pipefail
-          if [[ "${FULL_TESTS}" == "true" ]]; then
-            ./scripts/check-localization.sh --skip-build --scratch-path .build --stringsdata-dir "${RUNNER_TEMP}/stringsdata"
-          else
-            ./scripts/check-localization.sh
-          fi
+          xcodebuild build-for-testing \
+            -project RunPlayStudio.xcodeproj \
+            -scheme RunPlayStudio \
+            -configuration Release \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .build/xcode-release \
+            -disableAutomaticPackageResolution \
+            "${XCODEBUILD_PACKAGE_WARNINGS}" \
+            ENABLE_TESTABILITY=YES
+
+      # Every String Catalog must list exactly the strings its module's
+      # source uses (no missing, no stale keys), each translated into zh-Hans
+      # and zh-Hant with matching placeholders. The check reads the
+      # extraction of the package build (Core, Platform) and of the
+      # xcodebuild build (Studio) above, so there is no second build.
+      - name: Check String Catalogs
+        if: inputs.localization
+        run: |
+          set -euo pipefail
+          ./scripts/check-localization.sh --skip-build --scratch-path .build \
+            --stringsdata-dir "${RUNNER_TEMP}/stringsdata" \
+            --xcode-derived-data .build/xcode

@@ -85,30 +85,35 @@ Marketing version (`CFBundleShortVersionString`) comes only from `VERSION`.
 | Script | Role |
 |--------|------|
 | `scripts/lib/release-common.sh` | Shared validation, plist generation, checksums, signing helpers |
-| `scripts/assemble-app-bundle.sh` | Staged, repeatable `.app` assembly (no sign / zip / publish) |
+| `scripts/assemble-app-bundle.sh` | Builds the app from `RunPlayStudio.xcodeproj` (`xcodebuild build`, Release, signing off) and makes a staged copy with this release's version, build and identifier (no sign / zip / publish) |
 | `scripts/package-demo.sh` | Unsigned demo `.app` + `RunPlayStudio.app.zip` |
 | `scripts/package-release.sh` | Versioned release packaging (unsigned / adhoc / developer-id) |
 | `scripts/verify-app-bundle.sh` | Non-mutating structural + signing verification |
 | `scripts/test-release-packaging.sh` | Credential-free packaging tests |
 
-### Info.plist template
+### Info.plist
 
 ```text
-Packaging/RunPlayStudio-Info.plist.in
+RunPlayStudio/Info.plist
 ```
 
-Generated fields include bundle identity, versions, minimum OS, high-resolution
-capability, and `LSApplicationCategoryType = public.app-category.healthcare-fitness`
-(fitness/workout analysis product).
+The app's Info.plist is a file of the Xcode project. Its keys are bundle
+identity, versions (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`), minimum
+OS (`MACOSX_DEPLOYMENT_TARGET`), localizations, high-resolution capability,
+and `LSApplicationCategoryType = public.app-category.healthcare-fitness`
+(fitness/workout analysis product). Xcode adds its build keys (`DTXcode`,
+`DTSDKName` and the like). The assembler sets the version, build number and
+bundle identifier of each packaging run in its staged copy.
+`Packaging/RunPlayStudio-Info.plist.in` holds the same keys for the plist unit
+tests until packaging moves to `xcodebuild archive`.
 
 **Bundle identifier (distribution):** `com.shenghaoc.runplay-studio`
 Preserved from the historical demo packager. Do not change casually — it affects
 trust records and future upgrades. Application Support storage uses the fixed
 folder name `RunPlayStudio`, not a reverse-DNS derivation from this ID.
 
-The assembler is also reused by `script/build_and_run.sh`, with that launcher's
-intentional development bundle identifier supplied explicitly. There is one
-bundle-structure implementation, not separate release and development copies.
+There is one bundle-structure implementation: the Xcode project. Developers
+run the app from Xcode (⌘R) or from its `xcodebuild` build (README).
 "Repeatable" here means one validated process and deterministic logical
 metadata/naming; signed archives are not claimed to be byte-for-byte
 reproducible because build timestamps and secure signing timestamps vary.
@@ -365,7 +370,9 @@ runtime, and notarization/stapling/Gatekeeper states before release creation.
 Release and demo bundles contain only:
 
 - application code;
-- approved synthetic demo resources from the SwiftPM resource bundle.
+- approved synthetic demo resources, under `Contents/Resources/Resources`;
+- the package's resource bundles (Core and Platform strings, ZIPFoundation's
+  privacy manifest).
 
 They must not contain:
 

@@ -36,6 +36,8 @@ set -euo pipefail
 shopt -s nullglob
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/release-common.sh
+source "$SCRIPT_DIR/lib/release-common.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # docs/assets/ size budget in bytes, enforced on the generated curated set.
@@ -157,16 +159,23 @@ write_provenance() {
 
 cd "$REPO_ROOT"
 
-# Debug build: the app's --demo-assets mode exists only in debug builds.
+# Debug build: the app's --demo-assets mode exists only in debug builds. The
+# app is the RunPlayStudio target of RunPlayStudio.xcodeproj; its derived data
+# lives under the git-ignored .build/.
+DERIVED_DATA="$REPO_ROOT/.build/xcode"
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   log "building RunPlayStudio (debug)..."
-  # --build-system swiftbuild: the media render localized text, and Swift
-  # 6.3.x's default (native) build system does not compile String Catalogs.
-  swift build --build-system swiftbuild --product RunPlayStudio \
-    || die "swift build failed"
+  xcodebuild build \
+    -project "$REPO_ROOT/RunPlayStudio.xcodeproj" \
+    -scheme RunPlayStudio \
+    -configuration Debug \
+    -destination 'platform=macOS,arch=arm64' \
+    -derivedDataPath "$DERIVED_DATA" \
+    -disableAutomaticPackageResolution \
+    "$RUNPLAY_XCODEBUILD_PACKAGE_WARNINGS" \
+    >&2 || die "xcodebuild build failed"
 fi
-BIN_DIR="$(swift build --build-system swiftbuild --show-bin-path)" || die "could not locate the debug build"
-APP="$BIN_DIR/RunPlayStudio"
+APP="$DERIVED_DATA/Build/Products/Debug/RunPlayStudio.app/Contents/MacOS/RunPlayStudio"
 [[ -x "$APP" ]] || die "no debug RunPlayStudio binary at $APP; rerun without --skip-build"
 
 OUTPUT_DIR="$(resolve_output_dir "$OUTPUT_DIR")" || die "unsafe --output-dir"

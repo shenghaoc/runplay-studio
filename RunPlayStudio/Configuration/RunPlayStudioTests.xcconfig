@@ -1,0 +1,9 @@
+// RunPlayStudioTests.xcconfig — the unit-test bundle, hosted by the app, so
+// `@testable import RunPlayStudio` reaches the app module.
+
+PRODUCT_NAME = RunPlayStudioTests
+PRODUCT_BUNDLE_IDENTIFIER = com.shenghaoc.runplay-studio.tests
+GENERATE_INFOPLIST_FILE = YES
+TEST_HOST = $(BUILT_PRODUCTS_DIR)/RunPlayStudio.app/Contents/MacOS/RunPlayStudio
+BUNDLE_LOADER = $(TEST_HOST)
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks @loader_path/../Frameworks

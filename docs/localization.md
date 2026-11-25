@@ -8,8 +8,9 @@ are the executable truth.
 
 ## Where strings live
 
-Each Swift module owns one String Catalog, compiled into that module's resource
-bundle:
+Each Swift module owns one String Catalog. Core's and Platform's compile into
+their package resource bundles. Studio is the app target of
+`RunPlayStudio.xcodeproj`, so its catalog compiles into the app's main bundle:
 
 | Module | Catalog | Helper for strings built in Swift |
 |---|---|---|
@@ -18,15 +19,17 @@ bundle:
 | RunPlayStudio | `RunPlayStudio/Localization/Localizable.xcstrings` | `studioLocalized("…")` |
 
 - The helpers take a `String.LocalizationValue` whose English text is the key,
-  and read the module's own bundle — never the host's main bundle — so the app,
-  `swift run`, and tests resolve the same tables. An optional `locale:` pins a
+  and read the module's own tables: `coreLocalized` and `platformLocalized`
+  read their package bundle, never the host's main bundle, and
+  `studioLocalized` reads `Bundle.main`, where the app carries Studio's tables.
+  The app and its tests (hosted by the app) resolve the same tables. An optional `locale:` pins a
   language (the PNG card, the video HUD, and tests); it costs tens of
   microseconds per call, so render paths resolve once and reuse the text.
 - SwiftUI literals (`Text("Overview")`, `Button`, `Label`, `.help`,
   `.accessibilityLabel`, `TableColumn`, `.value(…)` in Charts) are
-  `LocalizedStringKey`s that SwiftUI resolves against the **main** bundle, so the
-  packaged app also carries Studio's compiled tables in
-  `Contents/Resources/<language>.lproj` (see Packaging).
+  `LocalizedStringKey`s that SwiftUI resolves against the **main** bundle, where
+  Xcode compiles Studio's catalog into `Contents/Resources/<language>.lproj`
+  (see Packaging).
 - Core's catalog is a macOS-only resource: Linux has no `xcstringstool`, so on
   Linux the catalog sits outside the target, `coreLocalized` returns the English
   key, and no resource bundle is built. Count-bearing keys therefore read in
@@ -133,14 +136,14 @@ bundle:
 
 ## Packaging and language selection
 
-The app declares `CFBundleLocalizations` (`en`, `zh-Hans`, `zh-Hant`), carries the
-Core, Platform, and Studio resource bundles, and copies Studio's compiled tables
-into `Contents/Resources` (`scripts/assemble-app-bundle.sh`;
-`scripts/verify-app-bundle.sh` checks all of it). Module bundles follow the
-main bundle's language, so a bundle without `CFBundleLocalizations` stays
-English: `swift run RunPlayStudio` is always English. To run in Chinese, use the
-packaged app and set the language per app in System Settings → General →
-Language & Region → Applications, or launch it once with
+The app's `RunPlayStudio/Info.plist` declares `CFBundleLocalizations` (`en`,
+`zh-Hans`, `zh-Hant`). Xcode builds the app with Studio's compiled tables in
+`Contents/Resources/<language>.lproj` and embeds the Core and Platform package
+resource bundles (`scripts/verify-app-bundle.sh` checks all of it). Module
+bundles follow the main bundle's language. To run in Chinese, build and run the
+app from `RunPlayStudio.xcodeproj` (⌘R in Xcode, or the `xcodebuild … build`
+plus `open` line in the README) and set the language per app in System
+Settings → General → Language & Region → Applications, or launch it once with
 `-AppleLanguages '(zh-Hans)'` (see `docs/manual-testing.md`).
 
 ## Checking catalogs
@@ -150,16 +153,20 @@ Language & Region → Applications, or launch it once with
 ./scripts/check-localization.sh --update   # sync: add new keys, drop stale ones
 ```
 
-The script builds the product targets with `-emit-localized-strings` in its own
-scratch path (`.build-localization`), syncs a copy of each catalog with
+The script builds the package's product targets (Core and Platform) with
+`-emit-localized-strings`, and the app (Studio) with `xcodebuild`, whose
+project sets `SWIFT_EMIT_LOC_STRINGS = YES`, both in its own scratch path
+(`.build-localization`, the Xcode derived data under
+`.build-localization/xcode`). It syncs a copy of each catalog with
 `xcrun xcstringstool sync` (the same merge Xcode performs), and fails on keys
 missing from a catalog, stale keys no longer in source, and live keys without a
 translated `zh-Hans` and `zh-Hant` value whose format specifiers match the
 English. CI runs it on every macOS pull-request run (and so in the nightly's PR
-lane) and in the release lane. There it does not build again: the one
-`swift build --build-tests` passes `-emit-localized-strings` and the check
-reads that build's extraction with
-`--skip-build --scratch-path .build --stringsdata-dir <dir>`.
+lane) and in the release lane. There it does not build again: the package
+`swift build` passes `-emit-localized-strings`, the app's
+`xcodebuild build-for-testing` writes Studio's `.stringsdata` under its derived
+data, and the check reads both with
+`--skip-build --scratch-path .build --stringsdata-dir <dir> --xcode-derived-data .build/xcode`.
 
 To change a string: edit the code, run `--update`, translate the new keys in
 Xcode's String Catalog editor (or the JSON), and rerun the check.

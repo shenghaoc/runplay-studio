@@ -1,0 +1,60 @@
+// Shared.xcconfig — build settings for every configuration and target of
+// RunPlayStudio.xcodeproj. The project file carries no build settings of its
+// own: each configuration names one of these files as its base.
+//
+// These match the SwiftPM build of the package (Package.swift), so the app
+// and its tests compile under the same rules as RunPlayCore and
+// RunPlayPlatform. Change them together.
+
+SDKROOT = macosx
+SUPPORTED_PLATFORMS = macosx
+// Package.swift: platforms: [.macOS(.v26)]
+MACOSX_DEPLOYMENT_TARGET = 26.0
+// The release train is arm64-only (docs/releasing.md).
+ARCHS = arm64
+
+// Package.swift: swiftLanguageModes: [.v6]
+SWIFT_VERSION = 6.0
+// Package.swift: .treatAllWarnings(as: .error) on every target we own.
+SWIFT_TREAT_WARNINGS_AS_ERRORS = YES
+GCC_TREAT_WARNINGS_AS_ERRORS = YES
+
+// SwiftPM defaults. New Xcode templates make every declaration MainActor and
+// turn on the "approachable concurrency" upcoming features; the package
+// uses neither, so isolation would change silently. Set the SwiftPM values
+// explicitly, and enable no upcoming feature the package does not.
+SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated
+SWIFT_APPROACHABLE_CONCURRENCY = NO
+SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = NO
+SWIFT_STRICT_CONCURRENCY = complete
+
+// Localization. Package.swift: defaultLocalization: "en". The String Catalog
+// compiles into the app's main bundle; no Swift symbols are generated from it.
+DEVELOPMENT_LANGUAGE = en
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES
+STRING_CATALOG_GENERATE_SYMBOLS = NO
+// scripts/check-localization.sh reads the .stringsdata this extraction writes.
+SWIFT_EMIT_LOC_STRINGS = YES
+
+// Signing: ad hoc, no team, manual. This is the state of today's packaged
+// bundle: no App Sandbox, no hardened runtime, no entitlements. The
+// Developer ID path re-signs with the hardened runtime at packaging time
+// (scripts/lib/release-common.sh, release_codesign_bundle).
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+PROVISIONING_PROFILE_SPECIFIER =
+ENABLE_APP_SANDBOX = NO
+ENABLE_HARDENED_RUNTIME = NO
+CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO
+
+// One executable, as SwiftPM builds it: no separate debug dylib.
+ENABLE_DEBUG_DYLIB = NO
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+DEAD_CODE_STRIPPING = YES
+ALWAYS_SEARCH_USER_PATHS = NO
+
+// Version. MARKETING_VERSION is the contents of VERSION at the repository
+// root; packaging passes it explicitly, and CI checks that this copy matches.
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1

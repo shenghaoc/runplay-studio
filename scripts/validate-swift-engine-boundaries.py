@@ -20,6 +20,12 @@ C_FAMILY_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".m", ".mm", ".h", ".hpp", ".h
 # The consumer smoke package is not a target of this package, but it builds
 # against it, so it is held to the same rule.
 EXTRA_SOURCE_DIRECTORIES = ("Tests/PackageConsumerSmoke",)
+# RunPlayStudio is the app target of this Xcode project, not a SwiftPM target,
+# so the package graph cannot see its edges. The project may link only these
+# package products, all from the local package at the repository root.
+PROJECT = ROOT / "RunPlayStudio.xcodeproj/project.pbxproj"
+PROJECT_TARGETS = {"RunPlayStudio", "RunPlayStudioTests"}
+LINKABLE_PRODUCTS = {"RunPlayCore", "RunPlayPlatform"}
 SWIFT_IMPORT = re.compile(
     r"(?<![.\w])(?P<attributes>(?:@\w+\s+)*)"
     r"(?:(?P<access>public|package|internal|fileprivate|private)\s+)?"
@@ -134,6 +140,49 @@ def graph_violations(manifest):
             yield f"the package must not set {key}"
 
 
+def project_violations(pbxproj):
+    """Check the Xcode project's targets and package links from its text."""
+    objects = re.findall(r"\n\t\t(\w{24}) (?:/\*.*?\*/ )?= \{(.*?)\};(?=\n)", pbxproj, re.S)
+    isa = {key: re.search(r"isa = (\w+);", body).group(1) for key, body in objects}
+    bodies = dict(objects)
+    products = {
+        key: re.search(r"productName = \"?([^\";]+)\"?;", body).group(1)
+        for key, body in objects if isa[key] == "XCSwiftPackageProductDependency"
+    }
+    for name in sorted(set(products.values()) - LINKABLE_PRODUCTS):
+        yield f"the Xcode project must not depend on package product {name}"
+    for key in bodies:
+        if isa[key] == "XCRemoteSwiftPackageReference":
+            yield "the Xcode project must not reference a remote package"
+        if isa[key] == "XCLocalSwiftPackageReference" and not re.search(r"relativePath = \.;", bodies[key]):
+            yield "the Xcode project's only package must be the one at the repository root"
+    targets = {}
+    for key, body in objects:
+        if isa[key] != "PBXNativeTarget":
+            continue
+        name = re.search(r"\bname = \"?([^\";]+)\"?;", body).group(1)
+        listed = re.search(r"packageProductDependencies = \((.*?)\);", body, re.S)
+        targets[name] = {products.get(ref, ref) for ref in re.findall(r"\w{24}", listed.group(1) if listed else "")}
+    if set(targets) != PROJECT_TARGETS:
+        yield f"the Xcode project's targets must be {sorted(PROJECT_TARGETS)}; got {sorted(targets)}"
+    if targets.get("RunPlayStudio") != LINKABLE_PRODUCTS:
+        yield f"RunPlayStudio must link exactly {sorted(LINKABLE_PRODUCTS)}"
+    if not targets.get("RunPlayStudioTests", set()) <= LINKABLE_PRODUCTS:
+        yield f"RunPlayStudioTests may link only {sorted(LINKABLE_PRODUCTS)}"
+
+
+def project_self_test():
+    project = PROJECT.read_text(encoding="utf-8")
+    if list(project_violations(project)) != []:
+        raise ValueError(f"the committed project fails its own check: {list(project_violations(project))}")
+    engine = project.replace("productName = RunPlayPlatform;", f"productName = {ENGINE};", 1)
+    if f"the Xcode project must not depend on package product {ENGINE}" not in list(project_violations(engine)):
+        raise ValueError("an engine product in the Xcode project was not reported")
+    remote = project.replace("isa = XCLocalSwiftPackageReference;", "isa = XCRemoteSwiftPackageReference;", 1)
+    if "the Xcode project must not reference a remote package" not in list(project_violations(remote)):
+        raise ValueError("a remote package in the Xcode project was not reported")
+
+
 def c_family_sources(directory):
     for path, folders, filenames in os.walk(directory):
         folders[:] = sorted(folder for folder in folders if not folder.startswith("."))
@@ -233,14 +282,16 @@ def self_test():
         if actual != ([expected] if expected else []):
             raise ValueError(f"{filename} as {relative}: expected {expected!r}; got {errors}")
     language_self_test()
+    project_self_test()
 
 
 def main():
     self_test()
     errors = []
     # --graph-only skips the source scan. The macOS lane uses it: the scan
-    # runs once on Linux, but only macOS declares the Platform and Studio
-    # targets, so only macOS can check their edges.
+    # runs once on Linux, but only macOS declares the Platform target, so only
+    # macOS can check its edges. Studio's sources are scanned here too; its
+    # target edges come from the Xcode project.
     graph_only = sys.argv[1:] == ["--graph-only"]
     if sys.argv[1:] and not graph_only:
         print("usage: validate-swift-engine-boundaries.py [--graph-only]", file=sys.stderr)
@@ -260,9 +311,12 @@ def main():
     manifest = subprocess.check_output(["swift", "package", "dump-package"], cwd=ROOT, text=True)
     errors.extend(graph_violations(json.loads(manifest)))
     # Both modes check the target languages: only macOS declares the Platform
-    # and Studio targets, so the graph-only lane is the one that sees them.
+    # target, so the graph-only lane is the one that sees it.
     description = subprocess.check_output(["swift", "package", "describe", "--type", "json"], cwd=ROOT, text=True)
     errors.extend(language_violations(json.loads(description), ROOT))
+    # Both modes check the Xcode project: RunPlayStudio and its tests are its
+    # targets, outside the SwiftPM graph on every host.
+    errors.extend(project_violations(PROJECT.read_text(encoding="utf-8")))
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1

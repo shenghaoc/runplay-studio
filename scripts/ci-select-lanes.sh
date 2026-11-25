@@ -6,23 +6,29 @@
 #     | ./scripts/ci-select-lanes.sh --event pull_request >> "$GITHUB_OUTPUT"
 #   ./scripts/ci-select-lanes.sh --self-test
 #
-# Prints three key=value lines:
-#   linux=true|false             run the RunPlayCore (Linux) lane
-#   macos=true|false             run the macOS verification lane
-#   macos_test_filter=<regex>    `swift test --filter` value; empty means all
-#                                test targets
+# Prints four key=value lines:
+#   linux=true|false                run the RunPlayCore (Linux) lane
+#   macos=true|false                run the macOS verification lane; it
+#                                   always runs the Studio tests (xcodebuild)
+#   macos_package_tests=true|false  run package tests (swift test) there too
+#   macos_test_filter=<regex>       their `swift test --filter` value; empty
+#                                   means every package test target
 #
 # Module graph: RunPlayEngine -> RunPlayCore -> RunPlayPlatform ->
-# RunPlayStudio. A change can reach only its own module and the modules
+# RunPlayStudio. The first three are SwiftPM targets; RunPlayStudio is the
+# app target of RunPlayStudio.xcodeproj, and its tests run through
+# xcodebuild. A change can reach only its own module and the modules
 # downstream of it. Every path is classified and the widest result wins:
 #
 #   *.md outside RunPlay*/** and Tests/**, docs/**, prompts/**, LICENSE
 #                                            nothing (lint still runs)
-#   RunPlayStudio/**  (any file, *.md too)   macOS, Studio tests
+#   RunPlayStudio/**  (any file, *.md too; the xcconfigs and Info.plist
+#   live there), RunPlayStudio.xcodeproj/** (the project, its scheme and
+#   its Package.resolved)                    macOS, Studio tests
 #   RunPlayPlatform/**                       macOS, Platform + Studio tests
 #   RunPlayCore/**, RunPlayEngine/**, any other
 #   RunPlay*/**, Tests/**
-#   (Package.swift, Package.resolved, scripts/**, script/**, .github/**,
+#   (Package.swift, Package.resolved, scripts/**, .github/**,
 #   Packaging/**, VERSION, and every path not listed above)
 #                                            everything
 #
@@ -34,14 +40,13 @@
 # Bash 3.2 safe: no associative arrays, no mapfile, no case modification.
 set -euo pipefail
 
-FILTER_STUDIO='^RunPlayStudioTests\.'
-FILTER_PLATFORM='^(RunPlayPlatformTests|RunPlayStudioTests)\.'
+FILTER_PLATFORM='^RunPlayPlatformTests\.'
 
 # classify PATH -> 0 nothing, 1 Studio, 2 Platform + Studio, 3 everything.
 # The first matching pattern wins, so the module trees come before *.md.
 classify() {
   case "$1" in
-    RunPlayStudio/*) echo 1 ;;
+    RunPlayStudio/* | RunPlayStudio.xcodeproj/*) echo 1 ;;
     RunPlayPlatform/*) echo 2 ;;
     RunPlayCore/* | RunPlayEngine/*) echo 3 ;;
     RunPlay*/*) echo 3 ;; # a module this script does not know yet
@@ -53,10 +58,10 @@ classify() {
 
 emit() {
   case "$1" in
-    0) printf 'linux=false\nmacos=false\nmacos_test_filter=\n' ;;
-    1) printf 'linux=false\nmacos=true\nmacos_test_filter=%s\n' "${FILTER_STUDIO}" ;;
-    2) printf 'linux=false\nmacos=true\nmacos_test_filter=%s\n' "${FILTER_PLATFORM}" ;;
-    *) printf 'linux=true\nmacos=true\nmacos_test_filter=\n' ;;
+    0) printf 'linux=false\nmacos=false\nmacos_package_tests=false\nmacos_test_filter=\n' ;;
+    1) printf 'linux=false\nmacos=true\nmacos_package_tests=false\nmacos_test_filter=\n' ;;
+    2) printf 'linux=false\nmacos=true\nmacos_package_tests=true\nmacos_test_filter=%s\n' "${FILTER_PLATFORM}" ;;
+    *) printf 'linux=true\nmacos=true\nmacos_package_tests=true\nmacos_test_filter=\n' ;;
   esac
 }
 
@@ -95,6 +100,13 @@ self_test() {
     "md under .github|pull_request|0|.github/pull_request_template.md"
     "Studio only|pull_request|1|RunPlayStudio/Sources/Views/A.swift;RunPlayStudio/Tests/RunPlayStudioTests/ATests.swift"
     "Studio resource md follows its module|pull_request|1|RunPlayStudio/Resources/help.md"
+    "Xcode project|pull_request|1|RunPlayStudio.xcodeproj/project.pbxproj"
+    "Xcode scheme|pull_request|1|RunPlayStudio.xcodeproj/xcshareddata/xcschemes/RunPlayStudio.xcscheme"
+    "Xcode Package.resolved|pull_request|1|RunPlayStudio.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    "Studio xcconfig|pull_request|1|RunPlayStudio/Configuration/Shared.xcconfig"
+    "Studio Info.plist|pull_request|1|RunPlayStudio/Info.plist"
+    "both lockfiles give everything|pull_request|3|Package.resolved;RunPlayStudio.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+    "a sibling Xcode project is not Studio|pull_request|3|Other.xcodeproj/project.pbxproj"
     "Platform only|pull_request|2|RunPlayPlatform/Sources/Map/A.swift"
     "Platform plus Studio|pull_request|2|RunPlayPlatform/Sources/A.swift;RunPlayStudio/Sources/B.swift"
     "Core change|pull_request|3|RunPlayCore/Sources/Models/A.swift"

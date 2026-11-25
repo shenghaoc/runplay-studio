@@ -65,15 +65,6 @@ assert_fail_contains() {
 
 release_log "Release packaging tests (tmp=$TMP_ROOT)"
 
-if grep -F -q 'scripts/assemble-app-bundle.sh' "$REPO_ROOT/script/build_and_run.sh" && \
-    ! grep -F -q '<plist' "$REPO_ROOT/script/build_and_run.sh"; then
-  printf 'PASS: development launcher reuses shared bundle assembler\n'
-  PASS=$((PASS + 1))
-else
-  printf 'FAIL: development launcher duplicated bundle assembly\n' >&2
-  FAIL=$((FAIL + 1))
-fi
-
 # Any workflow that writes packaging output inside the checkout must write to a
 # git-ignored directory, so artifacts cannot be committed by accident and cannot
 # dirty the worktree that production packaging requires to be clean. CI packages
@@ -291,9 +282,10 @@ assert_fail "assemble empty bin fails" \
     --build-number 1
 
 # ---------------------------------------------------------------------------
-# Integration: full ad-hoc dry run (uses real swift build once)
+# Integration: full ad-hoc dry run (uses one real xcodebuild build)
 # ---------------------------------------------------------------------------
-# Reuse a shared release build if RUNPLAY_TEST_BIN_DIR is set; otherwise build.
+# Reuse a shared release build if RUNPLAY_TEST_BIN_DIR (an xcodebuild products
+# directory that holds RunPlayStudio.app) is set; otherwise build.
 INTEGRATION_OUT="$TMP_ROOT/integration"
 mkdir -p "$INTEGRATION_OUT"
 
@@ -301,18 +293,27 @@ if [[ -n "${RUNPLAY_TEST_BIN_DIR:-}" && -d "${RUNPLAY_TEST_BIN_DIR}" ]]; then
   release_log "Using provided RUNPLAY_TEST_BIN_DIR=$RUNPLAY_TEST_BIN_DIR"
   TEST_BIN="$RUNPLAY_TEST_BIN_DIR"
 else
-  release_log "Building release binary for integration tests..."
-  # Same build system and architecture as scripts/assemble-app-bundle.sh, whose
-  # output these tests package (see the note there).
-  swift build --build-system swiftbuild -c release --arch arm64 --package-path "$REPO_ROOT"
-  TEST_BIN="$(swift build --build-system swiftbuild -c release --arch arm64 --package-path "$REPO_ROOT" --show-bin-path)"
+  release_log "Building the release app for integration tests..."
+  # The same build as scripts/assemble-app-bundle.sh, whose output these tests
+  # package (see the note there).
+  xcodebuild build \
+    -project "$REPO_ROOT/RunPlayStudio.xcodeproj" \
+    -scheme "$RUNPLAY_PRODUCT_NAME" \
+    -configuration Release \
+    -destination 'generic/platform=macOS' \
+    -derivedDataPath "$REPO_ROOT/.build/xcode-package" \
+    -disableAutomaticPackageResolution \
+    "$RUNPLAY_XCODEBUILD_PACKAGE_WARNINGS" \
+    CODE_SIGNING_ALLOWED=NO
+  TEST_BIN="$REPO_ROOT/.build/xcode-package/Build/Products/Release"
 fi
 TEST_BIN="$(cd "$TEST_BIN" && pwd)"
 
-# Missing resource bundle simulation
+# Missing resources simulation: an app that holds only its executable.
 FAKE_BIN="$TMP_ROOT/fake-bin"
-mkdir -p "$FAKE_BIN"
-cp "$TEST_BIN/$RUNPLAY_EXECUTABLE_NAME" "$FAKE_BIN/"
+mkdir -p "$FAKE_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS"
+cp "$TEST_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" \
+  "$FAKE_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/MacOS/"
 assert_fail "assemble missing resource bundle fails" \
   "$SCRIPT_DIR/assemble-app-bundle.sh" \
     --output "$TMP_ROOT/nores/RunPlayStudio.app" \
@@ -321,15 +322,12 @@ assert_fail "assemble missing resource bundle fails" \
     --version 0.1.0 \
     --build-number 1
 
-# A bin dir with the Studio bundle but not the Core string bundle: Core's
+# An app with Studio's resources but not the Core string bundle: Core's
 # Bundle.module would trap at first use, so assembly must refuse it.
 NO_CORE_BIN="$TMP_ROOT/no-core-bin"
 mkdir -p "$NO_CORE_BIN"
-cp "$TEST_BIN/$RUNPLAY_EXECUTABLE_NAME" "$NO_CORE_BIN/"
-for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
-  [[ "$bundle_name" == "RunPlayStudio_RunPlayCore.bundle" ]] && continue
-  cp -R "$TEST_BIN/$bundle_name" "$NO_CORE_BIN/"
-done
+ditto "$TEST_BIN/$RUNPLAY_PRODUCT_NAME.app" "$NO_CORE_BIN/$RUNPLAY_PRODUCT_NAME.app"
+rm -rf "$NO_CORE_BIN/$RUNPLAY_PRODUCT_NAME.app/Contents/Resources/RunPlayStudio_RunPlayCore.bundle"
 assert_fail_contains "assemble missing Core string bundle fails" \
   "RunPlayStudio_RunPlayCore.bundle (localized strings required)" \
   "$SCRIPT_DIR/assemble-app-bundle.sh" \

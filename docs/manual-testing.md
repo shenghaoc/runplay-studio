@@ -1,7 +1,24 @@
 # RunPlay Studio Manual Testing
 
-Manual checks supplement the SwiftPM test suite. Keep results concrete and avoid
-committing local workout files or generated exports.
+Manual checks supplement the automated suites (the package's `swift test` and
+the app's `xcodebuild` tests). Keep results concrete and avoid committing local
+workout files or generated exports.
+
+## Building and running the app
+
+The app is the `RunPlayStudio` target of `RunPlayStudio.xcodeproj`. In Xcode,
+open the project, select the **RunPlayStudio** scheme and **My Mac**, and press
+⌘R (not in the Xcode 26.6 IDE, which cannot build the local package; see
+AGENTS.md, Validation). From the command line, build the debug app and open it:
+
+```bash
+xcodebuild build -project RunPlayStudio.xcodeproj -scheme RunPlayStudio -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode SWIFT_SUPPRESS_WARNINGS=NO && open .build/xcode/Build/Products/Debug/RunPlayStudio.app
+```
+
+The checks below launch that bundle's executable,
+`.build/xcode/Build/Products/Debug/RunPlayStudio.app/Contents/MacOS/RunPlayStudio`,
+directly when they need launch arguments or environment variables. Name the
+Xcode that built it in a dated record.
 
 Use the warning-clean SwiftPM and Xcode commands in `AGENTS.md` and live CI for
 automated status. Dated manual GUI evidence is recorded with the relevant
@@ -16,7 +33,7 @@ Set `RUNPLAY_LIBRARY_ROOT` to point the app at a scratch library instead of
 `~/Library/Application Support/RunPlayStudio`:
 
 ```bash
-RUNPLAY_LIBRARY_ROOT=/tmp/runplay-check ./dist/RunPlayStudio.app/Contents/MacOS/RunPlayStudio
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-check .build/xcode/Build/Products/Debug/RunPlayStudio.app/Contents/MacOS/RunPlayStudio
 ```
 
 `HOME` does not do this: Application Support resolves through the OS, not the
@@ -64,14 +81,14 @@ and View → Toggle 2D/3D switched the map to 3D and back. VoiceOver was not run
 
 ## Chinese Localisation Checklist (zh-Hans / zh-Hant)
 
-Run the **packaged** app: `swift run` has no `CFBundleLocalizations` and always
-runs in English (see [localization.md](localization.md)). Build it with
-`./script/build_and_run.sh`, then either choose the language per app in System
-Settings → General → Language & Region → Applications → RunPlay Studio, or
-launch once with a launch argument and a throwaway library:
+Run the app built from `RunPlayStudio.xcodeproj` (see "Building and running
+the app"); its Info.plist declares `CFBundleLocalizations` (see
+[localization.md](localization.md)). Either choose the language per app in
+System Settings → General → Language & Region → Applications → RunPlay Studio,
+or launch once with a launch argument and a throwaway library:
 
 ```bash
-RUNPLAY_LIBRARY_ROOT=/tmp/runplay-zh ./dist/RunPlayStudio.app/Contents/MacOS/RunPlayStudio -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN
+RUNPLAY_LIBRARY_ROOT=/tmp/runplay-zh .build/xcode/Build/Products/Debug/RunPlayStudio.app/Contents/MacOS/RunPlayStudio -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN
 ```
 
 Repeat with `-AppleLanguages '(zh-Hant)' -AppleLocale zh_TW` for Traditional

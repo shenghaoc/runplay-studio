@@ -98,21 +98,20 @@ APP_PATH="$(cd "$APP_PATH" && pwd)"
 PLIST="$APP_PATH/Contents/Info.plist"
 EXEC="$APP_PATH/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
 RESOURCES="$APP_PATH/Contents/Resources"
-RESOURCE_BUNDLE="$RESOURCES/$RUNPLAY_RESOURCE_BUNDLE_NAME"
 
 # --- structure ---
 [[ -d "$APP_PATH/Contents" ]] && pass "Contents directory exists" || fail "Contents directory missing"
 [[ -f "$PLIST" ]] && pass "Info.plist exists" || fail "Info.plist missing"
 [[ -f "$EXEC" ]] && pass "executable exists" || fail "executable missing"
 [[ -x "$EXEC" ]] && pass "executable bit set" || fail "executable bit not set"
-[[ -d "$RESOURCE_BUNDLE" ]] && pass "SwiftPM resource bundle present" || fail "SwiftPM resource bundle missing"
+[[ -f "$RESOURCES/$RUNPLAY_STUDIO_RESOURCE_SAMPLE" ]] && pass "Studio demo resources present" || fail "Studio demo resources missing ($RUNPLAY_STUDIO_RESOURCE_SAMPLE)"
 for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
   [[ -d "$RESOURCES/$bundle_name" ]] && pass "resource bundle $bundle_name present" || fail "resource bundle $bundle_name missing"
 done
 
 # --- localization ---
 # Each non-development language needs compiled tables in the main bundle
-# (SwiftUI literals) and in every module bundle (Swift-built strings).
+# (SwiftUI literals and Studio's strings) and in every package module bundle.
 for language in $RUNPLAY_LOCALIZATIONS; do
   [[ "$language" == "en" ]] && continue
   if [[ -f "$RESOURCES/$language.lproj/Localizable.strings" ]]; then
@@ -214,11 +213,11 @@ fi
 # --- privacy / hygiene: no local library or secrets in the bundle ---
 PRIVACY_HITS=0
 while IFS= read -r -d '' hit; do
-  # Allow synthetic fixtures under the SwiftPM resource bundle only when they are
+  # Allow synthetic fixtures under Studio's resource folder only when they are
   # known demo resource patterns. Flag anything that looks like a user library.
   rel="${hit#"$APP_PATH/"}"
   case "$rel" in
-    Contents/Resources/"$RUNPLAY_RESOURCE_BUNDLE_NAME"/*)
+    Contents/Resources/"$RUNPLAY_STUDIO_RESOURCES_DIR"/*)
       # Approved synthetic demo resources may include .gpx/.json samples.
       case "$rel" in
         *.p12|*.p8|*.mobileprovision|*/session.json|*/manifest.json)

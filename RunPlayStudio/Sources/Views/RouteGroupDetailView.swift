@@ -82,12 +82,12 @@ struct RouteGroupDetailView: View {
     private func summaryLine(_ row: RouteGroupRow) -> String {
         var parts: [String] = []
         parts.append(String(
-            format: String(localized: "route_group.detail.runs", defaultValue: "%d runs", bundle: .module),
+            format: String(localized: "route_group.detail.runs", defaultValue: "%d runs", bundle: .main),
             row.runCount
         ))
         if let last = row.lastRunDate {
             parts.append(String(
-                format: String(localized: "route_group.detail.last", defaultValue: "last %@", bundle: .module),
+                format: String(localized: "route_group.detail.last", defaultValue: "last %@", bundle: .main),
                 last.formatted(date: .abbreviated, time: .omitted)
             ))
         }
@@ -100,15 +100,15 @@ struct RouteGroupDetailView: View {
     private func statsRow(_ row: RouteGroupRow) -> some View {
         HStack(spacing: AppDesign.Spacing.large) {
             paceStat(
-                title: String(localized: "route_group.stat.best", defaultValue: "Best Pace", bundle: .module),
+                title: String(localized: "route_group.stat.best", defaultValue: "Best Pace", bundle: .main),
                 value: row.bestPaceSecondsPerKilometer
             )
             paceStat(
-                title: String(localized: "route_group.stat.median", defaultValue: "Median Pace", bundle: .module),
+                title: String(localized: "route_group.stat.median", defaultValue: "Median Pace", bundle: .main),
                 value: row.medianPaceSecondsPerKilometer
             )
             paceStat(
-                title: String(localized: "route_group.stat.latest", defaultValue: "Latest Pace", bundle: .module),
+                title: String(localized: "route_group.stat.latest", defaultValue: "Latest Pace", bundle: .main),
                 value: row.latestPaceSecondsPerKilometer
             )
         }
@@ -147,7 +147,7 @@ struct RouteGroupDetailView: View {
                 .panelBackground()
                 .accessibilityLabel("Representative route map")
                 .accessibilityValue(String(
-                    format: String(localized: "route_group.map.ax", defaultValue: "Route overlay for %@, %.1f kilometres", bundle: .module),
+                    format: String(localized: "route_group.map.ax", defaultValue: "Route overlay for %@, %.1f kilometres", bundle: .main),
                     representative.displayName,
                     max(0, representative.summary.totalDistanceMeters) / 1_000
                 ))
@@ -259,10 +259,10 @@ struct RouteGroupDetailView: View {
         }
         parts.append(DisplayFormatter.formatPace(member.paceSecondsPerKilometer))
         if member.isRepresentative {
-            parts.append(String(localized: "route_group.member.representative.ax", defaultValue: "representative", bundle: .module))
+            parts.append(String(localized: "route_group.member.representative.ax", defaultValue: "representative", bundle: .main))
         }
         if member.isReversed {
-            parts.append(String(localized: "route_group.member.reversed.ax", defaultValue: "run in the opposite direction", bundle: .module))
+            parts.append(String(localized: "route_group.member.reversed.ax", defaultValue: "run in the opposite direction", bundle: .main))
         }
         return parts.joined(separator: ", ")
     }
@@ -313,12 +313,12 @@ struct RouteProgressionChart: View {
 
     private var spokenSummary: String {
         guard let first = points.first, let last = points.last, points.count >= 2 else {
-            return String(localized: "route_group.chart.empty.ax", defaultValue: "Not enough runs for a progression", bundle: .module)
+            return String(localized: "route_group.chart.empty.ax", defaultValue: "Not enough runs for a progression", bundle: .main)
         }
         let count = points.count
         let best = points.map(\.paceSecondsPerKilometer).min() ?? 0
         return String(
-            format: String(localized: "route_group.chart.summary.ax", defaultValue: "%d runs from %@ to %@, best active pace %@", bundle: .module),
+            format: String(localized: "route_group.chart.summary.ax", defaultValue: "%d runs from %@ to %@, best active pace %@", bundle: .main),
             count,
             first.date.formatted(date: .abbreviated, time: .omitted),
             last.date.formatted(date: .abbreviated, time: .omitted),

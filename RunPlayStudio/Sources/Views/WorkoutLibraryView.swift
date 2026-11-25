@@ -703,7 +703,7 @@ struct WorkoutLibraryView: View {
             return name
         }
         return derivedNames[group.id]
-            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .main)
     }
 
     // MARK: - Content

@@ -187,7 +187,7 @@ struct DemoAssetSampleRuns: Sendable {
 
     /// Loads the same resources, through the same importer, as
     /// `AppState.loadSampleWorkouts`, without creating an `AppState`.
-    static func loadBundled(from bundle: Bundle = .module) throws -> DemoAssetSampleRuns {
+    static func loadBundled(from bundle: Bundle = .main) throws -> DemoAssetSampleRuns {
         let runs = DemoAssetSampleRuns(
             primary: try load("sample_run", subdirectory: "Resources", bundle: bundle),
             comparison: try load(

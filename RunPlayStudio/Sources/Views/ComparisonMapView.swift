@@ -10,7 +10,7 @@ struct ComparisonMapView: View {
         String(
             localized: "comparison.column.selected_run",
             defaultValue: "Selected",
-            bundle: .module,
+            bundle: .main,
             comment: "Column heading: values of the selected (primary) run in a comparison"
         )
     }

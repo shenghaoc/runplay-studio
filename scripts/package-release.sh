@@ -57,7 +57,8 @@ Options:
   --notary-issuer <uuid>        API issuer UUID
   --dry-run                     Required for unsigned, ad-hoc, or non-notarized output
   --skip-build                  Reuse --bin-dir without building
-  --bin-dir <path>              Existing SwiftPM release bin directory
+  --bin-dir <path>              Existing xcodebuild Release products directory
+                                that holds RunPlayStudio.app
   --require-clean-worktree      Fail if git worktree is dirty; required for production
   --git-tag <tag>               Annotated production tag at HEAD; required for production
   -h, --help                    Show this help

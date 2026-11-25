@@ -71,9 +71,9 @@ jobs:
     if: needs.freshness.outputs.run == 'true'
     uses: ./.github/workflows/ci.yml
 
-  # The release-mode compile of every test target. Engine and full tests are
-  # off explicitly: the PR lane above already ran them, and macos-verify.yml
-  # defaults both to on.
+  # The release-mode compile of every test target. Engine, package and Studio
+  # tests are off explicitly: the PR lane above already ran them, and
+  # macos-verify.yml defaults all three to on.
   release-compile:
     name: Release compile
     needs: freshness
@@ -82,4 +82,5 @@ jobs:
     with:
       engine: false
       full-tests: false
+      studio-tests: false
       release-compile: true
