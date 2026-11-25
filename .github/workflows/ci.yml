@@ -34,6 +34,7 @@ jobs:
     outputs:
       linux: ${{ steps.select.outputs.linux }}
       macos: ${{ steps.select.outputs.macos }}
+      macos_package_tests: ${{ steps.select.outputs.macos_package_tests }}
       macos_test_filter: ${{ steps.select.outputs.macos_test_filter }}
     steps:
       - uses: actions/checkout@v7
@@ -87,11 +88,24 @@ jobs:
           bash -n scripts/package-release.sh
           bash -n scripts/verify-app-bundle.sh
           bash -n scripts/test-release-packaging.sh
-          bash -n script/build_and_run.sh
-          # The localization check is not packaging tooling either, but it
-          # gates the macOS lane; catch a syntax slip here for free.
+          # The localization check and the test-count reporter are not
+          # packaging tooling either, but they gate the macOS lane; catch a
+          # syntax slip here for free.
           bash -n scripts/check-localization.sh
           python3 -m py_compile scripts/check-localization.py
+          python3 -m py_compile scripts/report-test-counts.py
+      # The app's MARKETING_VERSION lives in an xcconfig for IDE builds;
+      # packaging passes VERSION explicitly. The two must agree.
+      - name: App version matches VERSION
+        run: |
+          set -euo pipefail
+          want="$(tr -d '[:space:]' < VERSION)"
+          got="$(sed -nE 's/^MARKETING_VERSION = ([0-9.]+)$/\1/p' RunPlayStudio/Configuration/Shared.xcconfig)"
+          if [[ "${got}" != "${want}" ]]; then
+            echo "RunPlayStudio/Configuration/Shared.xcconfig has MARKETING_VERSION '${got}'; VERSION is '${want}'" >&2
+            exit 1
+          fi
+          echo "MARKETING_VERSION ${got} matches VERSION"
       # actionlint is third-party tooling: pinned by exact version with the
       # published tarball checksum verified, never a floating tag.
       - name: Install actionlint (pinned)
@@ -110,8 +124,9 @@ jobs:
       - name: Self-test the lane selector
         run: ./scripts/ci-select-lanes.sh --self-test
 
-  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + the
-  # engine, in one call of the reusable macOS verification workflow (the same
+  # Full stack: the package's macOS-only target (RunPlayPlatform), the engine
+  # and the RunPlayStudio app from RunPlayStudio.xcodeproj, in one call of
+  # the reusable macOS verification workflow (the same
   # one the Release lane and the nightly call). macOS runners are the
   # bottleneck (about two run at once), so a PR pays for at most one macOS
   # job, and only when a changed path can reach it. The release-mode test
@@ -126,7 +141,8 @@ jobs:
     uses: ./.github/workflows/macos-verify.yml
     with:
       engine: true
-      full-tests: true
+      full-tests: ${{ needs.changes.outputs.macos_package_tests == 'true' }}
+      studio-tests: true
       release-compile: false
       localization: true
       test-filter: ${{ needs.changes.outputs.macos_test_filter }}

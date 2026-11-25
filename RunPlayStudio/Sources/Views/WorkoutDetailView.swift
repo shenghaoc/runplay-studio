@@ -676,7 +676,7 @@ private struct WorkoutHeaderView: View {
                 String(
                     localized: "workout.header.elevation_gain",
                     defaultValue: "Elevation",
-                    bundle: .module,
+                    bundle: .main,
                     comment: "Header metric: the run's total elevation gain"
                 ),
                 elevationAvailable

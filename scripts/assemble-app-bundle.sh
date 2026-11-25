@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# assemble-app-bundle.sh — Staged, repeatable macOS .app assembly from a
-# SwiftPM build output. Does not sign, zip, notarize, or publish.
+# assemble-app-bundle.sh — Staged, repeatable copy of the Xcode-built
+# RunPlayStudio.app, with this release's version, build number and bundle
+# identifier. Does not sign, zip, notarize, or publish.
+#
+# The app is built by RunPlayStudio.xcodeproj (`xcodebuild build`, Release,
+# code signing off, so the bundle carries only the linker's signature on the
+# executable, as a SwiftPM build did). This script stays only until packaging
+# moves to `xcodebuild archive`.
 #
 # Usage:
 #   ./scripts/assemble-app-bundle.sh \
@@ -9,11 +15,11 @@
 #     [--version <x.y.z>] \
 #     [--build-number <positive-int>] \
 #     [--bundle-identifier <reverse-dns-id>] \
-#     [--bin-dir <swiftpm-bin-path>] \
+#     [--bin-dir <xcodebuild-products-dir>] \
 #     [--skip-build]
 #
-# When --bin-dir is omitted, performs `swift build -c release` and uses
-# `swift build -c release --show-bin-path`.
+# When --bin-dir is omitted, builds the RunPlayStudio scheme in Release into
+# .build/xcode-package and uses its Build/Products/Release directory.
 #
 # Environment:
 #   RUNPLAY_ASSEMBLE_SKIP_BUILD=1  equivalent to --skip-build (requires --bin-dir)
@@ -44,7 +50,7 @@ usage() {
   cat <<'EOF'
 Usage: assemble-app-bundle.sh --output <RunPlayStudio.app> [options]
 
-Assemble a macOS application bundle from a SwiftPM release build.
+Copy the Xcode-built RunPlayStudio.app and set its version and identity.
 
 Options:
   --output <path>          Destination .app path (required)
@@ -52,8 +58,10 @@ Options:
   --version <x.y.z>        Marketing version (default: contents of VERSION)
   --build-number <int>     CFBundleVersion positive integer (default: 1)
   --bundle-identifier <id> Bundle identifier (default: distribution identity)
-  --bin-dir <path>         Existing SwiftPM bin directory
-  --skip-build             Do not run swift build (requires --bin-dir)
+  --bin-dir <path>         Existing xcodebuild products directory that holds
+                           RunPlayStudio.app (for example
+                           <derived-data>/Build/Products/Release)
+  --skip-build             Do not run xcodebuild (requires --bin-dir)
   -h, --help               Show this help
 
 This script never signs, zips, notarizes, or publishes.
@@ -109,7 +117,6 @@ if [[ "${RUNPLAY_ASSEMBLE_SKIP_BUILD:-}" == "1" ]]; then
 fi
 
 VERSION_FILE="$REPO_ROOT/VERSION"
-TEMPLATE="$REPO_ROOT/Packaging/RunPlayStudio-Info.plist.in"
 
 if [[ -z "$VERSION" ]]; then
   VERSION="$(release_read_version_file "$VERSION_FILE")"
@@ -118,8 +125,6 @@ else
 fi
 release_validate_build_number "$BUILD_NUMBER"
 release_validate_bundle_identifier "$BUNDLE_IDENTIFIER"
-
-[[ -f "$TEMPLATE" ]] || release_die "missing Info.plist template: $TEMPLATE"
 
 # Resolve output path (may not exist yet).
 OUTPUT_PARENT="$(dirname "$OUTPUT_APP")"
@@ -133,78 +138,67 @@ fi
 if [[ "$SKIP_BUILD" -eq 1 ]]; then
   [[ -n "$BIN_DIR" ]] || release_die "--skip-build requires --bin-dir"
 else
-  release_log "Building release binary (warnings are errors, per Package.swift)..."
-  # --build-system swiftbuild: the shipped app needs its String Catalogs
-  # compiled, which Swift 6.3.x's default (native) build system does not do.
-  # --arch arm64: the release train is arm64-only (docs/releasing.md), and
-  # swift-build on Swift 6.3.x builds a universal binary for -c release
-  # without it. --show-bin-path must be given the same flags, since the bin
-  # path depends on the build system and the architecture.
-  swift build --build-system swiftbuild -c release --arch arm64 --package-path "$REPO_ROOT"
+  DERIVED_DATA="$REPO_ROOT/.build/xcode-package"
+  release_log "Building the release app with xcodebuild (warnings are errors, per the project's xcconfigs)..."
+  # CODE_SIGNING_ALLOWED=NO: packaging signs the bundle itself
+  # (release_codesign_bundle), and an unsigned demo bundle keeps only the
+  # linker's signature on the executable. The project builds arm64 only.
+  xcodebuild build \
+    -project "$REPO_ROOT/RunPlayStudio.xcodeproj" \
+    -scheme "$RUNPLAY_PRODUCT_NAME" \
+    -configuration Release \
+    -destination 'generic/platform=macOS' \
+    -derivedDataPath "$DERIVED_DATA" \
+    -disableAutomaticPackageResolution \
+    "$RUNPLAY_XCODEBUILD_PACKAGE_WARNINGS" \
+    CODE_SIGNING_ALLOWED=NO
   if [[ -z "$BIN_DIR" ]]; then
-    BIN_DIR="$(swift build --build-system swiftbuild -c release --arch arm64 --package-path "$REPO_ROOT" --show-bin-path)"
+    BIN_DIR="$DERIVED_DATA/Build/Products/Release"
   fi
 fi
 
-[[ -d "$BIN_DIR" ]] || release_die "SwiftPM bin directory not found: $BIN_DIR"
+[[ -d "$BIN_DIR" ]] || release_die "xcodebuild products directory not found: $BIN_DIR"
 BIN_DIR="$(cd "$BIN_DIR" && pwd)"
-BINARY="$BIN_DIR/$RUNPLAY_EXECUTABLE_NAME"
-RESOURCE_BUNDLE="$BIN_DIR/$RUNPLAY_RESOURCE_BUNDLE_NAME"
+BUILT_APP="$BIN_DIR/$RUNPLAY_PRODUCT_NAME.app"
+BINARY="$BUILT_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
+BUILT_RESOURCES="$BUILT_APP/Contents/Resources"
 
 if [[ ! -f "$BINARY" ]]; then
   release_die "release binary not found at $BINARY"
 fi
-if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
-  release_die "SwiftPM resource bundle not found at $RESOURCE_BUNDLE (demo resources required)"
+if [[ ! -f "$BUILT_RESOURCES/$RUNPLAY_STUDIO_RESOURCE_SAMPLE" ]]; then
+  release_die "Studio resources not found at $BUILT_RESOURCES/$RUNPLAY_STUDIO_RESOURCE_SAMPLE (demo resources required)"
 fi
 for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
-  if [[ ! -d "$BIN_DIR/$bundle_name" ]]; then
-    release_die "SwiftPM resource bundle not found at $BIN_DIR/$bundle_name (localized strings required)"
+  if [[ ! -d "$BUILT_RESOURCES/$bundle_name" ]]; then
+    release_die "SwiftPM resource bundle not found at $BUILT_RESOURCES/$bundle_name (localized strings required)"
   fi
 done
-# SwiftUI literals resolve against the main bundle, so the app carries the
-# Studio catalog's compiled tables at Contents/Resources/<language>.lproj too.
-STUDIO_TABLES="$RESOURCE_BUNDLE/Contents/Resources"
+# SwiftUI literals and Studio's own strings resolve against the main bundle,
+# where Xcode compiles the Studio catalog.
 for language in $RUNPLAY_LOCALIZATIONS; do
   [[ "$language" == "en" ]] && continue
-  if [[ ! -f "$STUDIO_TABLES/$language.lproj/Localizable.strings" ]]; then
-    release_die "compiled $language strings missing from $RESOURCE_BUNDLE (String Catalog not compiled?)"
+  if [[ ! -f "$BUILT_RESOURCES/$language.lproj/Localizable.strings" ]]; then
+    release_die "compiled $language strings missing from $BUILT_APP (String Catalog not compiled?)"
   fi
 done
-
-# Detect duplicate unexpected executables at bin root (sanity).
-if [[ -f "$BIN_DIR/${RUNPLAY_EXECUTABLE_NAME}.debug.dylib" ]]; then
-  release_warn "debug dylib present next to release binary; not packaging it"
-fi
 
 ASSEMBLY_STAGE="$(mktemp -d "$OUTPUT_PARENT/.runplay-assemble.XXXXXX")"
 STAGED_APP="$ASSEMBLY_STAGE/$RUNPLAY_PRODUCT_NAME.app"
 
 release_log "Assembling app bundle at $OUTPUT_APP"
-mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
+ditto "$BUILT_APP" "$STAGED_APP"
 
-# Install executable with permissions preserved.
-cp "$BINARY" "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
-chmod +x "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME"
-
-# Install the SwiftPM resource bundles where Bundle.module expects them.
-for bundle_name in $RUNPLAY_RESOURCE_BUNDLE_NAMES; do
-  cp -R "$BIN_DIR/$bundle_name" "$STAGED_APP/Contents/Resources/"
-done
-
-# Install the Studio string tables in the main bundle for SwiftUI literals.
-for lproj in "$STUDIO_TABLES"/*.lproj; do
-  [[ -d "$lproj" ]] || continue
-  cp -R "$lproj" "$STAGED_APP/Contents/Resources/"
-done
-
-# Generate Info.plist from template.
-release_generate_info_plist \
-  "$TEMPLATE" \
-  "$STAGED_APP/Contents/Info.plist" \
-  "$VERSION" \
-  "$BUILD_NUMBER" \
-  "$BUNDLE_IDENTIFIER"
+# This release's version, build number and identifier. The project's
+# Info.plist takes them from build settings; set them here so one build serves
+# every packaging run that reuses it.
+STAGED_PLIST="$STAGED_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy \
+  -c "Set :CFBundleShortVersionString $VERSION" \
+  -c "Set :CFBundleVersion $BUILD_NUMBER" \
+  -c "Set :CFBundleIdentifier $BUNDLE_IDENTIFIER" \
+  "$STAGED_PLIST"
+plutil -lint "$STAGED_PLIST" >/dev/null || release_die "Info.plist failed plutil -lint: $STAGED_PLIST"
 
 # Reject empty MacOS directory outcomes.
 if [[ ! -x "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" ]]; then
@@ -212,7 +206,7 @@ if [[ ! -x "$STAGED_APP/Contents/MacOS/$RUNPLAY_EXECUTABLE_NAME" ]]; then
 fi
 
 # Replace only the validated product bundle after the staged assembly is
-# complete, so a failed copy or plist generation cannot leave a partial app.
+# complete, so a failed copy or plist edit cannot leave a partial app.
 rm -rf "$OUTPUT_APP"
 mv "$STAGED_APP" "$OUTPUT_APP"
 

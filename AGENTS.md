@@ -10,7 +10,8 @@ historical rapid-prototyping prompts that instructed agents to work directly on
 
 ## Instruction Hierarchy
 
-1. Source code, tests, `Package.swift`, and CI workflows are executable truth.
+1. Source code, tests, `Package.swift`, `RunPlayStudio.xcodeproj` and its
+   xcconfigs, and CI workflows are executable truth.
 2. This root `AGENTS.md` defines repository operating policy.
 3. Linked documentation provides detailed reference material.
 4. Tool entrypoints such as `CLAUDE.md` and `GEMINI.md` import this file and
@@ -66,6 +67,7 @@ Before editing:
 - Each PR must declare its intended files or subsystem. Avoid unrelated nearby
   cleanup.
 - Serialize changes to shared coordination files: `AGENTS.md`, `Package.swift`,
+  `RunPlayStudio.xcodeproj/project.pbxproj`,
   CI workflows, `AppState`, and shared architecture documents.
 - Do not overwrite unexplained changes or resurrect commits removed by a history
   cleanup.
@@ -190,10 +192,22 @@ not import `RunPlayEngine` directly.
   MapKit, ImageIO (DEM tile decoding), and non-UI Combine. It must not depend
   on `RunPlayStudio`.
 - **RunPlayStudio** owns SwiftUI, Charts, app lifecycle, GUI state, and UI
-  export.
+  export. It is not a SwiftPM target: it is the app target of the committed
+  Xcode project `RunPlayStudio.xcodeproj`, with its unit tests
+  (`RunPlayStudioTests`, hosted by the app) as that project's test target.
+  The project uses the package at the repository root as a local package and
+  links only its `RunPlayCore` and `RunPlayPlatform` products; `RunPlayEngine`
+  is not a product. Its build settings live in
+  `RunPlayStudio/Configuration/*.xcconfig`, not in `project.pbxproj`, and its
+  source, catalog and test folders are synchronized folders, so adding or
+  removing a file does not change `project.pbxproj`. `RunPlayStudio/Resources`
+  is a folder reference, copied as `Contents/Resources/Resources`. Studio's
+  resources and catalog are in `Bundle.main`. No project generator is used.
 
-See [docs/architecture.md](docs/architecture.md), [docs/engine.md](docs/engine.md)
-and [Package.swift](Package.swift) for the live architecture and package graph.
+See [docs/architecture.md](docs/architecture.md), [docs/engine.md](docs/engine.md),
+[Package.swift](Package.swift) and
+[RunPlayStudio.xcodeproj](RunPlayStudio.xcodeproj) for the live architecture,
+package graph and app target.
 
 ### Swift engine policy (defaults)
 
@@ -318,14 +332,16 @@ reach. `scripts/ci-select-lanes.sh` holds the table; the `changes` job in
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs it, and `lint`
 self-tests it on every PR. The module graph is
 `RunPlayEngine` → `RunPlayCore` → `RunPlayPlatform` → `RunPlayStudio`, and
-each change reaches its own module and the modules downstream.
+each change reaches its own module and the modules downstream. The package
+tests run through `swift test`; the Studio tests run through `xcodebuild`, and
+every macOS run runs them.
 
 | Changed path | Runs |
 |---|---|
 | `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `prompts/**`, `LICENSE` | lint only |
-| `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests, boundary validator |
-| `RunPlayPlatform/**` | macOS, Platform and Studio tests, boundary validator |
-| `RunPlayCore/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
+| `RunPlayStudio/**` (a `*.md` there too; the xcconfigs and `Info.plist` live there), `RunPlayStudio.xcodeproj/**` (the project, its shared scheme and its `Package.resolved`) | macOS: Studio tests (xcodebuild), no package tests; boundary validator |
+| `RunPlayPlatform/**` | macOS: `swift test --filter RunPlayPlatformTests` and the Studio tests; boundary validator |
+| `RunPlayCore/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
 
 - Every path is classified and the widest result wins; a renamed file counts
   under both its old and new path.
@@ -337,23 +353,29 @@ each change reaches its own module and the modules downstream.
   selection covers only its own changes. Each PR below it is verified by its
   own CI.
 - The engine boundary validator
-  (`scripts/validate-swift-engine-boundaries.py`, a static source scan plus a
-  check of the SwiftPM target graph) runs once per CI run, in the tests leg
+  (`scripts/validate-swift-engine-boundaries.py`, a static source scan, a
+  check of the SwiftPM target graph, and a check that the Xcode project's two
+  targets link only `RunPlayCore` and `RunPlayPlatform` from the local
+  package) runs once per CI run, in the tests leg
   of `core-linux`, which therefore runs when the selector turns on `linux` OR
   `macos`: the validator scans Core, Platform and Studio, so a Studio-only PR
   needs it. When only `macos` is on, that leg runs just the checkout and the
   validator, and the sanitizers leg skips all its steps; the engine tests,
   the Core gate, consumer smoke and the AddressSanitizer run need `linux`.
   Every macOS job runs the validator's target-graph check (`--graph-only`),
-  because the Linux package graph omits the macOS-only Platform and Studio
-  targets; the release path runs the whole validator through
+  because the Linux package graph omits the macOS-only Platform target; the
+  release path runs the whole validator through
   `macos-verify.yml`'s `boundaries` input. The Swift image pin stays on the
   one `container:` line in `core-linux`.
 - Every macOS run also checks the String Catalogs
-  (`scripts/check-localization.sh`) without a second build: the one
-  `swift build --build-tests` passes `-emit-localized-strings`, which only adds
-  `.stringsdata` outputs, and the check reads that extraction with
-  `--skip-build --scratch-path .build --stringsdata-dir <dir>`. The release path
+  (`scripts/check-localization.sh`) without a second build. Core and Platform:
+  the one package `swift build` passes `-emit-localized-strings`, which only
+  adds `.stringsdata` outputs. Studio: the `xcodebuild build-for-testing` of
+  the app writes them under its derived data (the project sets
+  `SWIFT_EMIT_LOC_STRINGS = YES`). The check reads both with
+  `--skip-build --scratch-path .build --stringsdata-dir <dir>
+  --xcode-derived-data .build/xcode`. A Studio-only change still builds the
+  package products, without tests, for that extraction. The release path
   runs it too, and a macOS-only change to a module's strings or catalog selects
   the macOS lane through `RunPlay*/**`.
 - The `CI` gate accepts a skipped lane only when the selector turned that
@@ -366,12 +388,42 @@ each change reaches its own module and the modules downstream.
 
 ## Validation
 
-Use the same warning-clean SwiftPM commands enforced by CI. Warnings are
-errors in every Swift target we own: `Package.swift` sets `.treatAllWarnings(as:
-.error)` on them (and on `Tests/PackageConsumerSmoke`'s target), so a plain
-`swift build` or `swift test` is the gate on macOS and Linux. Do not pass `-Xswiftc -warnings-as-errors`: it also
-reaches dependency targets, which SwiftPM compiles with `-suppress-warnings`,
-and swift-build on Swift 6.3 rejects that combination.
+Use the same warning-clean SwiftPM and xcodebuild commands enforced by CI.
+Warnings are errors in every Swift target we own: `Package.swift` sets
+`.treatAllWarnings(as: .error)` on them (and on `Tests/PackageConsumerSmoke`'s
+target), and the Xcode project's `RunPlayStudio/Configuration/Shared.xcconfig`
+sets `SWIFT_TREAT_WARNINGS_AS_ERRORS` and `GCC_TREAT_WARNINGS_AS_ERRORS` for the
+app and its tests, so a plain `swift build`, `swift test` or `xcodebuild` is
+the gate. Do not pass `-Xswiftc -warnings-as-errors`: it also reaches
+dependency targets, which SwiftPM compiles with `-suppress-warnings`, and
+swift-build on Swift 6.3 rejects that combination.
+
+**CI's Xcode is the toolchain authority.** `setup-macos-build` selects
+`/Applications/Xcode_26.6.app` (Swift 6.3.3) by path; that path is the one
+macOS pin, as the `container:` line is the one Linux pin, and the repository
+has no `.swift-version` or `.xcode-version` file. A local build may use a
+newer Xcode (select it with `xcode-select` or `DEVELOPER_DIR`, never a
+swiftly toolchain for macOS builds). Name the Xcode that produced each local
+result. A change that passes on a newer Xcode but fails on CI's is a real
+failure, whether it is a newer language feature, an SDK-only API, or a warning
+only one toolchain emits: fix the code to build on both, never by lowering the
+warning level.
+
+**Xcode 26.6 and the local package's warnings.** Xcode 26.6 builds the local
+package's targets with `-suppress-warnings`, which clashes with the
+`-warnings-as-errors` that `.treatAllWarnings(as: .error)` adds, and the build
+stops with "conflicting options"; Xcode 27.2 does not suppress them. Every
+`xcodebuild` call therefore passes `SWIFT_SUPPRESS_WARNINGS=NO`, defined once
+for the scripts (`RUNPLAY_XCODEBUILD_PACKAGE_WARNINGS` in
+`scripts/lib/release-common.sh`) and once for CI (`XCODEBUILD_PACKAGE_WARNINGS`
+in `macos-verify.yml`). It lowers no warning level. A project cannot set build
+settings on package targets, so **building in the Xcode 26.6 IDE (⌘R, ⌘U) is
+not supported**: on 26.6 build from the command line, or use a newer Xcode in
+the IDE.
+
+The Xcode project's format is "Xcode 16.0-compatible" (`objectVersion = 77`,
+`preferredProjectObjectVersion = 77`). A newer Xcode must not raise it: after
+saving the project in the IDE, check that `objectVersion` is still 77.
 
 ```bash
 python3 scripts/validate-swift-engine-boundaries.py
@@ -382,7 +434,15 @@ LSAN_OPTIONS=suppressions=$PWD/scripts/lsan-xctest-discovery.supp \
 swift test --filter RunPlayCoreTests
 swift build --package-path Tests/PackageConsumerSmoke
 swift test --filter RunPlayPlatformTests                               # macOS
-swift test                                                            # macOS full stack
+swift test                                                            # macOS: every package test
+# macOS: the app and its Studio tests, from RunPlayStudio.xcodeproj
+xcodebuild build-for-testing -project RunPlayStudio.xcodeproj -scheme RunPlayStudio \
+  -configuration Debug -destination 'platform=macOS,arch=arm64' \
+  -derivedDataPath .build/xcode -disableAutomaticPackageResolution SWIFT_SUPPRESS_WARNINGS=NO
+xcodebuild test-without-building -project RunPlayStudio.xcodeproj -scheme RunPlayStudio \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode \
+  -disableAutomaticPackageResolution -resultBundlePath .build/xcode-results/studio.xcresult
+python3 scripts/report-test-counts.py --label Studio --xcresult .build/xcode-results/studio.xcresult
 ./scripts/check-localization.sh   # macOS: catalogs match source; zh-Hans/zh-Hant complete
 git diff --check
 ```
@@ -391,13 +451,19 @@ git diff --check
 default (native) build system copies a String Catalog uncompiled: the resource
 bundles get no `.lproj` folders and no plural forms, and the localization tests
 fail. The swift-build system compiles the catalogs and is the default from
-Swift 6.4. CI (`macos-verify.yml`) and the scripts that build the app
-(`assemble-app-bundle.sh`, `test-release-packaging.sh`,
-`generate-demo-assets.sh`, `check-localization.sh`, `script/build_and_run.sh`)
-pass the flag, and a `swift test --skip-build` must use the build system that
-built. On Linux the native system stays: it builds Core without catalogs (the
+Swift 6.4. CI (`macos-verify.yml`) and `check-localization.sh` pass the flag
+to every SwiftPM call, and a `swift test --skip-build` must use the build
+system that built. The app is built by `xcodebuild`, which compiles the
+catalogs itself. On Linux the native system stays: it builds Core without catalogs (the
 Core catalog is declared on macOS only), and swift-build's libdispatch crash on
 Linux is what `retry-swiftpm-libdispatch-crash.sh` handles.
+
+Studio's tests run in an `xcodebuild` result bundle; read its counts with
+`xcrun xcresulttool get test-results summary` (`totalTestCount`,
+`skippedTests`), which `scripts/report-test-counts.py --xcresult` does. The
+same script reads a `swift test` log (`--swift-test-log`), summing XCTest's
+per-bundle summaries and Swift Testing's run summaries; CI reports both
+runners through it and fails a run in which no test ran.
 
 A filtered or soaked run must assert the expected `Executed N tests` count
 for the named suite, never just the exit code. `swift test --filter` exits 0
@@ -583,6 +649,12 @@ so a lone `/src` fails identically — hence `/src` plus git's recursive
 `/src/*`. Passing it through the environment changes nothing on the host
 or in the repository, and it is inert wherever the uid already owns the
 mount, which is why Linux CI and rootless podman never needed it.
+
+**Two lockfiles pin ZIPFoundation**: the root `Package.resolved` (SwiftPM) and
+`RunPlayStudio.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
+(Xcode). They must pin the same revision. A ZIPFoundation bump updates both
+in the same PR. CI runs `xcodebuild` with `-disableAutomaticPackageResolution`,
+so a stale Xcode lockfile fails the build instead of re-resolving.
 
 The Swift version in the Linux image must equal the Swift in the Xcode that
 `setup-macos-build` provides to the macOS jobs, so both platforms test one

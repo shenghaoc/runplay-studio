@@ -2,12 +2,12 @@ import Foundation
 
 // Studio's strings live in `RunPlayStudio/Localization/Localizable.xcstrings`.
 //
+// Studio is the app target of RunPlayStudio.xcodeproj, so Xcode compiles this
+// catalog into the app's main bundle (`Contents/Resources/<language>.lproj`).
 // SwiftUI literals (`Text("Overview")`, `Button("Export")`, `.help("…")`)
-// resolve against the main bundle, so the packaged app carries this catalog's
-// compiled tables in `Contents/Resources/<language>.lproj` as well as in the
-// module bundle (scripts/assemble-app-bundle.sh). Strings built in Swift go
-// through `studioLocalized`, which reads the module bundle and therefore
-// resolves identically in the app, in `swift run`, and in tests.
+// resolve against the main bundle. Strings built in Swift go through
+// `studioLocalized`, which reads the main bundle too and therefore resolves
+// identically in the app and in its tests, which the app hosts.
 //
 // Same rules as `coreLocalized`: English source text as the key, interpolate
 // only `String` and integer values, and write the plural English form for
@@ -20,18 +20,18 @@ import Foundation
 /// paths resolve once and reuse the text.
 func studioLocalized(_ keyAndValue: String.LocalizationValue, locale: Locale? = nil) -> String {
     guard let locale else {
-        return String(localized: keyAndValue, bundle: .module)
+        return String(localized: keyAndValue, bundle: .main)
     }
     return String(
         localized: LocalizedStringResource(
             keyAndValue,
             locale: locale,
-            bundle: .atURL(Bundle.module.bundleURL)
+            bundle: .atURL(Bundle.main.bundleURL)
         )
     )
 }
 
 /// Studio's resource bundle. Tests read its compiled tables directly.
 enum StudioLocalization {
-    static var bundle: Bundle { .module }
+    static var bundle: Bundle { .main }
 }

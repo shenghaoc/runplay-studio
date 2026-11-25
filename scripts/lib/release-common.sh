@@ -18,20 +18,37 @@ RUNPLAY_BUNDLE_IDENTIFIER="com.shenghaoc.runplay-studio"
 RUNPLAY_MINIMUM_SYSTEM_VERSION="26.0"
 RUNPLAY_SUPPORTED_ARCHITECTURE="arm64"
 RUNPLAY_EXECUTABLE_NAME="RunPlayStudio"
+# RunPlayStudio is the app target of RunPlayStudio.xcodeproj, so its own
+# resources live in the main bundle: the demo workouts under
+# Contents/Resources/Resources (the RunPlayStudio/Resources folder, copied as a
+# folder) and the compiled Studio catalog in Contents/Resources/<lang>.lproj.
 # shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
-RUNPLAY_RESOURCE_BUNDLE_NAME="RunPlayStudio_RunPlayStudio.bundle"
+RUNPLAY_STUDIO_RESOURCES_DIR="Resources"
+# shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
+RUNPLAY_STUDIO_RESOURCE_SAMPLE="Resources/sample_run.json"
 # Every SwiftPM resource bundle the app reads at runtime, space-separated (bash
-# 3.2 has no portable way to export arrays through `source`). The Studio bundle
-# carries the demo resources and Studio's strings; the Core and Platform
+# 3.2 has no portable way to export arrays through `source`). Xcode builds them
+# from the local package, named <package>_<target>: the Core and Platform
 # bundles carry those modules' String Catalogs. SwiftPM's generated
 # `Bundle.module` traps on first use when its bundle is missing, so assembly
 # and verification both require the whole set.
 # shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
-RUNPLAY_RESOURCE_BUNDLE_NAMES="RunPlayStudio_RunPlayStudio.bundle RunPlayStudio_RunPlayCore.bundle RunPlayStudio_RunPlayPlatform.bundle"
+RUNPLAY_RESOURCE_BUNDLE_NAMES="RunPlayStudio_RunPlayCore.bundle RunPlayStudio_RunPlayPlatform.bundle"
 # Languages the app ships, in CFBundleLocalizations order; English is the
-# development language. Must match Packaging/RunPlayStudio-Info.plist.in.
+# development language. Must match RunPlayStudio/Info.plist (and, until
+# packaging moves to xcodebuild archive, Packaging/RunPlayStudio-Info.plist.in).
 # shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
 RUNPLAY_LOCALIZATIONS="en zh-Hans zh-Hant"
+
+# The one build setting every xcodebuild call passes. Xcode 26.6 builds the
+# local package's targets with -suppress-warnings (SWIFT_SUPPRESS_WARNINGS=YES),
+# which clashes with the -warnings-as-errors that Package.swift's
+# .treatAllWarnings(as: .error) adds ("conflicting options '-warnings-as-errors'
+# and '-suppress-warnings'"); Xcode 27.2 does not suppress them. Turning the
+# suppression off lets both build. It lowers no warning level: our targets keep
+# warnings as errors, and ZIPFoundation's warnings become visible.
+# shellcheck disable=SC2034 # sourced by the scripts that run xcodebuild
+RUNPLAY_XCODEBUILD_PACKAGE_WARNINGS="SWIFT_SUPPRESS_WARNINGS=NO"
 
 # Max practical CFBundleVersion digit length (prevents absurd values).
 RUNPLAY_MAX_BUILD_NUMBER_DIGITS=9

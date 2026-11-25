@@ -522,7 +522,7 @@ struct ComparisonSummaryView: View {
                     label: String(
                         localized: "compare.delta.paused_time",
                         defaultValue: "Paused",
-                        bundle: .module,
+                        bundle: .main,
                         comment: "Difference in total paused time between the two runs"
                     ),
                     value: summary.pausedTimeDeltaFormatted
@@ -540,7 +540,7 @@ struct ComparisonSummaryView: View {
                     label: String(
                         localized: "compare.delta.elevation_gain",
                         defaultValue: "Elevation",
-                        bundle: .module,
+                        bundle: .main,
                         comment: "Difference in elevation gain (total climb) between the two runs"
                     ),
                     value: summary.elevationGainDeltaFormatted

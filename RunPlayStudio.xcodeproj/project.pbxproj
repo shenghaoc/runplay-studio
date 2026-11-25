@@ -1,0 +1,357 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5A1F0000000000000000A105 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 5A1F0000000000000000C004 /* Resources */; };
+		5A1F0000000000000000A101 /* RunPlayCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1F0000000000000000A001 /* RunPlayCore */; };
+		5A1F0000000000000000A102 /* RunPlayPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1F0000000000000000A002 /* RunPlayPlatform */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5A1F0000000000000000B001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1F0000000000000000F001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A1F0000000000000000E001;
+			remoteInfo = RunPlayStudio;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		5A1F0000000000000000C001 /* RunPlayStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RunPlayStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1F0000000000000000C002 /* RunPlayStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunPlayStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A1F0000000000000000C003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		5A1F0000000000000000C004 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
+		5A1F0000000000000000C011 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+		5A1F0000000000000000C012 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		5A1F0000000000000000C013 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		5A1F0000000000000000C014 /* RunPlayStudio.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = RunPlayStudio.xcconfig; sourceTree = "<group>"; };
+		5A1F0000000000000000C015 /* RunPlayStudioTests.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = RunPlayStudioTests.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		5A1F0000000000000000D001 /* Sources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		5A1F0000000000000000D003 /* Localization */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Localization;
+			sourceTree = "<group>";
+		};
+		5A1F0000000000000000D004 /* RunPlayStudioTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RunPlayStudioTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5A1F0000000000000000E101 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A1F0000000000000000A101 /* RunPlayCore in Frameworks */,
+				5A1F0000000000000000A102 /* RunPlayPlatform in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1F0000000000000000E201 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5A1F00000000000000006001 = {
+			isa = PBXGroup;
+			children = (
+				5A1F00000000000000006002 /* RunPlayStudio */,
+				5A1F00000000000000006005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5A1F00000000000000006002 /* RunPlayStudio */ = {
+			isa = PBXGroup;
+			children = (
+				5A1F0000000000000000D001 /* Sources */,
+				5A1F0000000000000000C004 /* Resources */,
+				5A1F0000000000000000D003 /* Localization */,
+				5A1F00000000000000006003 /* Tests */,
+				5A1F00000000000000006004 /* Configuration */,
+				5A1F0000000000000000C003 /* Info.plist */,
+			);
+			path = RunPlayStudio;
+			sourceTree = "<group>";
+		};
+		5A1F00000000000000006003 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				5A1F0000000000000000D004 /* RunPlayStudioTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		5A1F00000000000000006004 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				5A1F0000000000000000C011 /* Shared.xcconfig */,
+				5A1F0000000000000000C012 /* Debug.xcconfig */,
+				5A1F0000000000000000C013 /* Release.xcconfig */,
+				5A1F0000000000000000C014 /* RunPlayStudio.xcconfig */,
+				5A1F0000000000000000C015 /* RunPlayStudioTests.xcconfig */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		5A1F00000000000000006005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5A1F0000000000000000C001 /* RunPlayStudio.app */,
+				5A1F0000000000000000C002 /* RunPlayStudioTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5A1F0000000000000000E001 /* RunPlayStudio */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1F00000000000000007002 /* Build configuration list for PBXNativeTarget "RunPlayStudio" */;
+			buildPhases = (
+				5A1F0000000000000000E102 /* Sources */,
+				5A1F0000000000000000E101 /* Frameworks */,
+				5A1F0000000000000000E103 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A1F0000000000000000D001 /* Sources */,
+				5A1F0000000000000000D003 /* Localization */,
+			);
+			name = RunPlayStudio;
+			packageProductDependencies = (
+				5A1F0000000000000000A001 /* RunPlayCore */,
+				5A1F0000000000000000A002 /* RunPlayPlatform */,
+			);
+			productName = RunPlayStudio;
+			productReference = 5A1F0000000000000000C001 /* RunPlayStudio.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5A1F0000000000000000E002 /* RunPlayStudioTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A1F00000000000000007003 /* Build configuration list for PBXNativeTarget "RunPlayStudioTests" */;
+			buildPhases = (
+				5A1F0000000000000000E202 /* Sources */,
+				5A1F0000000000000000E201 /* Frameworks */,
+				5A1F0000000000000000E203 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5A1F0000000000000000B002 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5A1F0000000000000000D004 /* RunPlayStudioTests */,
+			);
+			name = RunPlayStudioTests;
+			packageProductDependencies = (
+			);
+			productName = RunPlayStudioTests;
+			productReference = 5A1F0000000000000000C002 /* RunPlayStudioTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5A1F0000000000000000F001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					5A1F0000000000000000E001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					5A1F0000000000000000E002 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 5A1F0000000000000000E001;
+					};
+				};
+			};
+			buildConfigurationList = 5A1F00000000000000007001 /* Build configuration list for PBXProject "RunPlayStudio" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+				"zh-Hant",
+			);
+			mainGroup = 5A1F00000000000000006001;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5A1F0000000000000000A000 /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5A1F00000000000000006005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5A1F0000000000000000E001 /* RunPlayStudio */,
+				5A1F0000000000000000E002 /* RunPlayStudioTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5A1F0000000000000000E103 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A1F0000000000000000A105 /* Resources in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1F0000000000000000E203 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5A1F0000000000000000E102 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A1F0000000000000000E202 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5A1F0000000000000000B002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A1F0000000000000000E001 /* RunPlayStudio */;
+			targetProxy = 5A1F0000000000000000B001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		5A1F00000000000000007011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1F0000000000000000C012 /* Debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		5A1F00000000000000007012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1F0000000000000000C013 /* Release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		5A1F00000000000000007021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1F0000000000000000C014 /* RunPlayStudio.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		5A1F00000000000000007022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1F0000000000000000C014 /* RunPlayStudio.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		5A1F00000000000000007031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1F0000000000000000C015 /* RunPlayStudioTests.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		5A1F00000000000000007032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1F0000000000000000C015 /* RunPlayStudioTests.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5A1F00000000000000007001 /* Build configuration list for PBXProject "RunPlayStudio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1F00000000000000007011 /* Debug */,
+				5A1F00000000000000007012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1F00000000000000007002 /* Build configuration list for PBXNativeTarget "RunPlayStudio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1F00000000000000007021 /* Debug */,
+				5A1F00000000000000007022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A1F00000000000000007003 /* Build configuration list for PBXNativeTarget "RunPlayStudioTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A1F00000000000000007031 /* Debug */,
+				5A1F00000000000000007032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		5A1F0000000000000000A000 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5A1F0000000000000000A001 /* RunPlayCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RunPlayCore;
+		};
+		5A1F0000000000000000A002 /* RunPlayPlatform */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RunPlayPlatform;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5A1F0000000000000000F001 /* Project object */;
+}

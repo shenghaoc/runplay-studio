@@ -355,14 +355,14 @@ struct PersonalHeatmapView: View {
     private func heatmapRouteFilterTitle(derivedNames: [UUID: String]) -> String {
         switch viewModel.routeFilter {
         case .anyRoute:
-            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .module)
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .main)
         case .ungroupedOnly:
-            return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route", bundle: .module)
+            return String(localized: "heatmap.route.ungrouped", defaultValue: "Not on a Route", bundle: .main)
         case .group(let groupID):
             if let group = viewModel.routeGroups.first(where: { $0.id == groupID }) {
                 return Self.heatmapRouteMenuName(for: group, derivedNames: derivedNames)
             }
-            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .module)
+            return String(localized: "heatmap.route.any", defaultValue: "Any Route", bundle: .main)
         }
     }
 
@@ -376,7 +376,7 @@ struct PersonalHeatmapView: View {
             return name
         }
         return derivedNames[group.id]
-            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .module)
+            ?? String(localized: "route_group.unnamed", defaultValue: "Route", bundle: .main)
     }
 
     // Each picker is bounded by the other, so an inverted range cannot be

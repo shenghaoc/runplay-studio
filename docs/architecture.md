@@ -35,6 +35,12 @@ Dependency direction:
 RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngine
 ```
 
+`RunPlayEngine`, `RunPlayCore` and `RunPlayPlatform` are SwiftPM targets of
+`Package.swift`. `RunPlayStudio` is the app target of the committed Xcode
+project `RunPlayStudio.xcodeproj`, which uses the package at the repository
+root as a local package and links only its `RunPlayCore` and
+`RunPlayPlatform` products.
+
 ```
 RunPlayEngine/                 # Pure Swift computational engine (non-product target)
 ├── Sources/                   # Kernels and their value types (`package` access)
@@ -55,16 +61,26 @@ RunPlayPlatform/               # macOS non-UI layer (MapKit, SceneKit, AppKit va
 ├── Sources/                   # Route/map data and rendering services
 └── Tests/                     # Platform integration tests
 
-RunPlayStudio/                 # macOS executable (SwiftUI, Swift Charts)
-├── Sources/
+RunPlayStudio/                 # macOS app target of RunPlayStudio.xcodeproj (SwiftUI, Swift Charts)
+├── Sources/                   # Synchronized folder: the app target's sources
 │   ├── Commands/              # CommandRegistry, focused actions, shortcuts help
+│   ├── DemoAssets/            # Debug-only --demo-assets renderer for the README media
+│   ├── Localization/          # studioLocalized helper (Bundle.main tables)
+│   ├── Models/                # Studio presentation models
 │   ├── Services/              # UI-adjacent services (library, PNG/video/comparison-video export, announcements)
 │   ├── ViewModels/            # View state management (AppState, ReplayController, PNG/video/comparison-video export)
-│   ├── Views/                 # SwiftUI views
-│   └── 3D/                    # Legacy SceneKit prototype utilities (not the shipped map UI)
-├── Resources/                 # Sample data and fixtures
+│   └── Views/                 # SwiftUI views
+├── Resources/                 # Folder reference: sample data and fixtures, copied to Contents/Resources/Resources
+├── Localization/              # Synchronized folder: Studio's String Catalog, compiled into the main bundle
+├── Configuration/             # Build settings (Shared, Debug, Release, app and test xcconfigs)
+├── Info.plist                 # The app's Info.plist (version and build from build settings)
 └── Tests/
-    └── RunPlayStudioTests/    # macOS-specific tests
+    └── RunPlayStudioTests/    # Synchronized folder: unit tests, hosted by the app
+
+RunPlayStudio.xcodeproj/       # Committed Xcode project (no generator), objectVersion 77
+├── project.pbxproj            # RunPlayStudio app + RunPlayStudioTests; local package at `.`
+├── project.xcworkspace/xcshareddata/swiftpm/Package.resolved   # Xcode's ZIPFoundation pin
+└── xcshareddata/xcschemes/RunPlayStudio.xcscheme               # Shared scheme; Test runs RunPlayStudioTests only
 ```
 
 ### Swift engine route and analysis kernels

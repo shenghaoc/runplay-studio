@@ -1,6 +1,10 @@
-# Xcode
+# Xcode. RunPlayStudio.xcodeproj is the app's committed project, with its
+# shared workspace data (the Xcode Package.resolved and the shared scheme);
+# any other project or workspace, and every user's own state, stays ignored.
 *.xcodeproj/
+!/RunPlayStudio.xcodeproj/
 *.xcworkspace/
+!/RunPlayStudio.xcodeproj/project.xcworkspace/
 xcuserdata/
 DerivedData/
 *.pbxuser
@@ -42,7 +46,6 @@ Package.pins
 # never sees the file. A committed lockfile for a disposable
 # verification package would be sync burden with no benefit.
 Tests/PackageConsumerSmoke/Package.resolved
-*.xcodeproj
 
 # macOS
 .DS_Store

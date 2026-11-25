@@ -269,8 +269,16 @@ bundle; SwiftUI modifiers do not always reach AppKit menus.
 
 ```bash
 git diff --check origin/main
-swift build
-swift test --filter "CommandRegistryTests|FocusedActionTests|AccessibilitySummaryTests|ChartAccessibilityTests|MetricChartAccessibilityTests|AccessibilityAnnouncementTests|ReplayControllerTests"
+# Core suites (SwiftPM package)
+swift test --filter "AccessibilitySummaryTests|ChartAccessibilityTests"
+# Studio suites (the app's tests, from RunPlayStudio.xcodeproj)
+xcodebuild test -project RunPlayStudio.xcodeproj -scheme RunPlayStudio \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode SWIFT_SUPPRESS_WARNINGS=NO \
+  -only-testing:RunPlayStudioTests/CommandRegistryTests \
+  -only-testing:RunPlayStudioTests/FocusedActionTests \
+  -only-testing:RunPlayStudioTests/MetricChartAccessibilityTests \
+  -only-testing:RunPlayStudioTests/AccessibilityAnnouncementTests \
+  -only-testing:RunPlayStudioTests/ReplayControllerTests
 ```
 
 Head-specific results belong in the live PR testing section.

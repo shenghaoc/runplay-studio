@@ -59,12 +59,12 @@ struct RoutesView: View {
             Label(
                 viewModel.pendingAssignmentCount > 0
                     ? String(
-                        format: String(localized: "route_group.header.pending", defaultValue: "%d routes · %d runs awaiting analysis", bundle: .module),
+                        format: String(localized: "route_group.header.pending", defaultValue: "%d routes · %d runs awaiting analysis", bundle: .main),
                         viewModel.rows.count,
                         viewModel.pendingAssignmentCount
                     )
                     : String(
-                        format: String(localized: "route_group.header", defaultValue: "%d routes", bundle: .module),
+                        format: String(localized: "route_group.header", defaultValue: "%d routes", bundle: .main),
                         viewModel.rows.count
                     ),
                 systemImage: "point.topleft.down.curvedto.point.bottomright.up"
@@ -73,12 +73,12 @@ struct RoutesView: View {
             .accessibilityLabel(
                 viewModel.pendingAssignmentCount > 0
                     ? String(
-                        format: String(localized: "route_group.header.pending.ax", defaultValue: "%d routes, %d runs awaiting route analysis", bundle: .module),
+                        format: String(localized: "route_group.header.pending.ax", defaultValue: "%d routes, %d runs awaiting route analysis", bundle: .main),
                         viewModel.rows.count,
                         viewModel.pendingAssignmentCount
                     )
                     : String(
-                        format: String(localized: "route_group.header.ax", defaultValue: "%d routes", bundle: .module),
+                        format: String(localized: "route_group.header.ax", defaultValue: "%d routes", bundle: .main),
                         viewModel.rows.count
                     )
             )
@@ -282,12 +282,12 @@ private struct RouteGroupListRow: View {
     private var accessibilitySummary: String {
         var parts: [String] = [row.displayName]
         parts.append(String(
-            format: String(localized: "route_group.row.runs.ax", defaultValue: "%d runs", bundle: .module),
+            format: String(localized: "route_group.row.runs.ax", defaultValue: "%d runs", bundle: .main),
             row.runCount
         ))
         if let best = row.bestPaceSecondsPerKilometer {
             parts.append(String(
-                format: String(localized: "route_group.row.best.ax", defaultValue: "best active pace %@", bundle: .module),
+                format: String(localized: "route_group.row.best.ax", defaultValue: "best active pace %@", bundle: .main),
                 DisplayFormatter.formatPace(best)
             ))
         }

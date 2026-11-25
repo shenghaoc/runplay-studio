@@ -79,7 +79,7 @@ irregular timing falls back safely to `moving = active`, `stopped = 0`.
 | Apple Health export archive | Supported | Running workouts from `export.zip`, with route-less and HR support; use **Import Apple Health Export…**. See [the import guide](docs/apple-health-import.md). |
 | Direct HealthKit | Not planned | A provisioned HealthKit capability is outside this project's signing policy. See [the decision record](docs/healthkit-viability.md). |
 
-**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message. Apple Health archives use **Import Apple Health Export…**; ordinary file import does not sniff ZIP contents.
+**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the app. Unsupported extensions are rejected by importer validation with a clear error message. Apple Health archives use **Import Apple Health Export…**; ordinary file import does not sniff ZIP contents.
 
 ### Export
 
@@ -166,13 +166,14 @@ Architecture: **Apple Silicon (arm64) only** — not universal.
 
 ## Current Status
 
-SwiftPM builds and the full test suite passes. GUI verification notes are kept in
-`docs/manual-testing.md`.
+The package (SwiftPM) and the app (Xcode project) build, and both test suites
+pass. GUI verification notes are kept in `docs/manual-testing.md`.
 
 | Check | Status |
 |-------|--------|
-| `swift build` | ✅ Pass |
-| `swift test` | ✅ Pass |
+| `swift build` (package) | ✅ Pass |
+| `swift test` (package tests) | ✅ Pass |
+| `xcodebuild build-for-testing` / `test-without-building` (app and Studio tests) | ✅ Pass |
 | Core tests (`swift test --filter RunPlayCoreTests`) | ✅ Pass (platform-neutral) |
 | CI | ✅ GitHub Actions macOS + Linux (Core) |
 | Release packaging dry-run tooling | ✅ In-repo (`scripts/package-release.sh`) |
@@ -256,7 +257,8 @@ The release benchmark and profile runners (`scripts/run-*-benchmark.sh`,
 The package checks this boundary with:
 
 ```bash
-# Engine import boundaries and the SwiftPM target graph
+# Engine import boundaries, the SwiftPM target graph and the Xcode
+# project's package links
 python3 scripts/validate-swift-engine-boundaries.py
 
 # Build the pure Swift engine and run its tests
@@ -294,44 +296,62 @@ testing guidance.
 
 ## How to Build
 
-This is a **Swift Package** (no `.xcodeproj` file). Xcode can open Swift Packages directly.
+The repository holds two things that build together:
 
-### Command Line
+- a **Swift package** (`Package.swift`) with `RunPlayEngine`, `RunPlayCore` and
+  `RunPlayPlatform` and their tests;
+- an **Xcode project** (`RunPlayStudio.xcodeproj`) whose `RunPlayStudio` app
+  target and `RunPlayStudioTests` unit tests use that package as a local
+  package.
 
-```bash
-# Clone the repo
-git clone https://github.com/shenghaoc/runplay-studio.git
-cd runplay-studio
-
-# Build
-swift build
-
-# Run tests
-swift test
-```
+The app is built only through the Xcode project. Use the Xcode that CI selects
+(Xcode 26.6) or a newer one; select it with `xcode-select` or
+`DEVELOPER_DIR`. The command lines below pass `SWIFT_SUPPRESS_WARNINGS=NO`,
+which Xcode 26.6 needs to build the local package (see AGENTS.md,
+Validation). Building in the Xcode 26.6 IDE is not supported; use a newer
+Xcode for ⌘R, or the command line.
 
 ### Xcode
 
 ```bash
-# Open the package in Xcode
-open Package.swift
+git clone https://github.com/shenghaoc/runplay-studio.git
+cd runplay-studio
+open RunPlayStudio.xcodeproj
 ```
 
-Xcode will open the Swift Package and resolve dependencies. To run:
+Xcode opens the project and resolves the local package and its pinned
+dependency. To run:
 1. Select the **RunPlayStudio** scheme in the toolbar
 2. Choose **My Mac** as the destination
 3. Press **⌘R** to build and run
 
 The app will launch with two bundled sample runs pre-loaded so comparison mode can be tried immediately. Import additional runs via the sidebar import button (supports JSON, GPX, TCX, and FIT files).
 
-### Xcode vs Swift Package
+### Command Line
 
-| Approach | Use Case |
-|----------|----------|
-| `open Package.swift` | Development, UI work, debugging |
-| `swift build` / `swift test` | CI, headless verification, scripting |
+```bash
+# The package: build it and run its tests
+swift build
+swift test
 
-Both approaches use the same source code. There is no separate Xcode project file to maintain.
+# The app: build it, then open it
+xcodebuild build -project RunPlayStudio.xcodeproj -scheme RunPlayStudio -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode SWIFT_SUPPRESS_WARNINGS=NO && open .build/xcode/Build/Products/Debug/RunPlayStudio.app
+
+# The app's tests (Studio)
+xcodebuild test -project RunPlayStudio.xcodeproj -scheme RunPlayStudio -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode SWIFT_SUPPRESS_WARNINGS=NO
+```
+
+### Package vs Xcode project
+
+| Entry point | What it builds |
+|-------------|----------------|
+| `open RunPlayStudio.xcodeproj` / `xcodebuild` | The app, its unit tests, and the package products it links |
+| `swift build` / `swift test` | The package only: engine, Core and Platform, and their tests (also on Linux for Core) |
+
+The Xcode project is committed and is the source of truth for the app target;
+no project generator is used. Its source, resource and test folders are
+synchronized folders, so adding or removing a file does not change
+`project.pbxproj`.
 
 ---
 
@@ -342,7 +362,7 @@ Both approaches use the same source code. There is no separate Xcode project fil
 Every pull request runs lint and the lane selector, then only the lanes its
 changed paths can reach (the table is in AGENTS.md under "Lane selection"):
 
-- **macOS** — engine build + engine target-graph check + `swift test`, narrowed to the Studio or Platform and Studio test targets when only those modules changed
+- **macOS** — engine build + engine target-graph and Xcode-project link check + `swift test` for the package (narrowed to the Platform tests when only Platform changed, and skipped when only Studio changed) + `xcodebuild build-for-testing` and `test-without-building` for the app and the Studio tests
 - **Linux** — engine boundary validator (whenever a change can reach Linux or macOS) + engine build and tests + `swift test --filter RunPlayCoreTests` through the gate script (these when a change can reach Core)
 - **Linux sanitizers** — the engine tests under AddressSanitizer
 
@@ -401,7 +421,7 @@ To build a local `.app` bundle:
 | Apple Health export archive | Supported | Running workouts from `export.zip`, with route-less and HR support; use **Import Apple Health Export…**. See [the import guide](docs/apple-health-import.md). |
 | Direct HealthKit | Not planned | A provisioned HealthKit capability is outside this project's signing policy. See [the decision record](docs/healthkit-viability.md). |
 
-**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the Swift Package app path. Unsupported extensions are rejected by importer validation with a clear error message. Apple Health archives use **Import Apple Health Export…**; ordinary file import does not sniff ZIP contents.
+**File picker**: the macOS open panel allows generic file data so `.json`, `.gpx`, `.tcx`, and `.fit` files can be selected in the app. Unsupported extensions are rejected by importer validation with a clear error message. Apple Health archives use **Import Apple Health Export…**; ordinary file import does not sniff ZIP contents.
 
 **FIT scope**: Common running activity files validate header and file CRCs, decode compressed timestamps, and retain standard file-ID, record, event, lap, session, activity, and device-info messages in source order. A file with zero or one session message imports directly; a file with several session messages opens the **Import FIT Sessions** review sheet, where supported running sessions become separate workouts committed in one transaction. Timer boundaries preserve route gaps, and supplied distance is used per valid segment. Developer data fields (running power and running dynamics) and native record running dynamics are decoded with provenance; component accumulation, subfield expansion, and course/workout files remain unsupported. Real-device-file import landed in #143: before it, the parser required the wrong header data-type magic and rejected every genuine FIT file at the header, and a device writing `session.timestamp == start_time` collapsed a whole run to a single route point.
 

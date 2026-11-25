@@ -986,7 +986,7 @@ class AppState: ObservableObject {
         let resourceSubdirectory = ["Resources", subdirectory]
             .compactMap { $0 }
             .joined(separator: "/")
-        if let url = Bundle.module.url(
+        if let url = Bundle.main.url(
             forResource: resource,
             withExtension: fileExtension,
             subdirectory: resourceSubdirectory
@@ -1491,7 +1491,7 @@ class AppState: ObservableObject {
                     format: String(
                         localized: "route_group.recluster.summary",
                         defaultValue: "%d runs on %d routes",
-                        bundle: .module
+                        bundle: .main
                     ),
                     result.workoutCount,
                     result.groups.count

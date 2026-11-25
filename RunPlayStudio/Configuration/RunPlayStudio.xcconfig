@@ -1,0 +1,21 @@
+// RunPlayStudio.xcconfig — the macOS app target. Its configurations also
+// inherit the project-level Debug or Release file.
+
+PRODUCT_NAME = RunPlayStudio
+PRODUCT_MODULE_NAME = RunPlayStudio
+EXECUTABLE_NAME = RunPlayStudio
+PRODUCT_BUNDLE_IDENTIFIER = com.shenghaoc.runplay-studio
+// Shown in Finder and the menu bar; CFBundleDisplayName in Info.plist.
+RUNPLAY_DISPLAY_NAME = RunPlay Studio
+
+// A real Info.plist, not a generated one, so its keys are reviewable.
+GENERATE_INFOPLIST_FILE = NO
+INFOPLIST_FILE = RunPlayStudio/Info.plist
+INFOPLIST_PREPROCESS = NO
+
+// No asset catalog and no entitlements file.
+ASSETCATALOG_COMPILER_APPICON_NAME =
+CODE_SIGN_ENTITLEMENTS =
+ENABLE_PREVIEWS = NO
+COMBINE_HIDPI_IMAGES = YES
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks

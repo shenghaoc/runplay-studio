@@ -121,27 +121,8 @@ targets.append(contentsOf: [
         ],
         swiftSettings: strictWarnings
     ),
-    // macOS UI layer: owns the app lifecycle and all SwiftUI/Charts code.
-    // This target must not import RunPlayEngine.
-    .executableTarget(
-        name: "RunPlayStudio",
-        dependencies: ["RunPlayCore", "RunPlayPlatform"],
-        path: "RunPlayStudio/Sources",
-        resources: [
-            .process("../Resources"),
-            .process("../Localization/Localizable.xcstrings")
-        ],
-        swiftSettings: strictWarnings
-    ),
-    .testTarget(
-        name: "RunPlayStudioTests",
-        dependencies: ["RunPlayCore", "RunPlayPlatform", "RunPlayStudio"],
-        path: "RunPlayStudio/Tests/RunPlayStudioTests",
-        swiftSettings: strictWarnings
-    ),
 ])
 products.append(.library(name: "RunPlayPlatform", targets: ["RunPlayPlatform"]))
-products.append(.executable(name: "RunPlayStudio", targets: ["RunPlayStudio"]))
 #endif
 
 let package = Package(
