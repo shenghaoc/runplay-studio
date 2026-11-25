@@ -286,30 +286,35 @@ struct WorkoutDetailView: View {
         case .charts:
             let context = appState.analysisContext(for: workout)
             let elevationProfile = context.elevationProfile
-            MetricsChartView(
-                routePoints: workout.routePoints,
-                timeline: context.timeline,
-                elevationProfile: elevationProfile,
-                currentDistance: replayController.state.currentDistance,
-                onSeek: { distance in
-                    replayController.pause()
-                    replayController.seekToDistance(distance)
-                },
-                highlightedRangeMeters: highlightedRangeMeters,
-                elevationSource: ElevationSourceSummary(
-                    workout: workout,
-                    sourceCounts: elevationProfile.sourceCounts
-                ),
-                heartRate: heartRateChartPlan
-            )
-            .padding(.vertical, AppDesign.Spacing.large)
+            // The chart stack scrolls inside its own panel (#193): its natural
+            // height can exceed the minimum window, and the replay dock below
+            // must stay on screen.
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    MetricsChartView(
+                        routePoints: workout.routePoints,
+                        timeline: context.timeline,
+                        elevationProfile: elevationProfile,
+                        currentDistance: replayController.state.currentDistance,
+                        onSeek: { distance in
+                            replayController.pause()
+                            replayController.seekToDistance(distance)
+                        },
+                        highlightedRangeMeters: highlightedRangeMeters,
+                        elevationSource: ElevationSourceSummary(
+                            workout: workout,
+                            sourceCounts: elevationProfile.sourceCounts
+                        ),
+                        heartRate: heartRateChartPlan
+                    )
+                    .padding(.vertical, AppDesign.Spacing.large)
 
-            if workout.hasPowerData || workout.developerFieldSummary != nil {
-                RunningDynamicsPanel(workout: workout)
-                    .padding(.bottom, AppDesign.Spacing.large)
+                    if workout.hasPowerData || workout.developerFieldSummary != nil {
+                        RunningDynamicsPanel(workout: workout)
+                            .padding(.bottom, AppDesign.Spacing.large)
+                    }
+                }
             }
-
-            Spacer(minLength: 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .panelBackground()
         case .splits:
