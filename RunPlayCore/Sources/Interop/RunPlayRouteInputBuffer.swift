@@ -23,30 +23,6 @@ enum RunPlayRouteInputBuffer {
         return try samples.withUnsafeBufferPointer(body)
     }
 
-    /// Builds one complete native sample buffer while cooperatively checking
-    /// cancellation at the configured stride during conversion.
-    static func withNativeSamples<Result>(
-        _ points: [RoutePoint],
-        cancellationCheckStride: Int,
-        isCancelled: @Sendable () -> Bool,
-        _ body: (
-            UnsafeBufferPointer<runplay.RouteInputSample>
-        ) throws -> Result
-    ) throws -> Result {
-        let stride = max(1, cancellationCheckStride)
-        var samples = ContiguousArray<runplay.RouteInputSample>()
-        samples.reserveCapacity(points.count)
-
-        for (sourceIndex, point) in points.enumerated() {
-            if sourceIndex.isMultiple(of: stride), isCancelled() {
-                throw CancellationError()
-            }
-            samples.append(makeSample(sourceIndex: sourceIndex, point: point))
-        }
-
-        return try samples.withUnsafeBufferPointer(body)
-    }
-
     private static func makeSample(
         sourceIndex: Int,
         point: RoutePoint
@@ -78,7 +54,7 @@ enum RunPlayRouteInputBuffer {
         )
     }
 
-    static func nativeOptional(
+    private static func nativeOptional(
         _ value: Double?
     ) -> runplay.RouteOptionalDouble {
         guard let value else {

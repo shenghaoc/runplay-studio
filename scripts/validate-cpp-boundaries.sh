@@ -803,14 +803,14 @@ else
   done
 fi
 
-# --- Scalar geodesy stays parity-only; combined quality is production --------
+# --- Scalar geodesy is parity-only; route quality is native Swift ------------
 
-# Scalar C++ geodesy symbols remain parity-only. Production route-quality
-# geometry stages 2–4 must go through the combined bridge, never one call per
-# point.
+# Scalar C++ geodesy and route-quality geometry symbols are parity-only.
+# The Swift processor calls its geometry adapter once for the whole workout.
 GEODESY_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayGeodesyBridge.swift"
 GEO_DISTANCE_SOURCE="RunPlayCore/Sources/Services/GeoDistance.swift"
-ROUTE_QUALITY_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteQualityBridge.swift"
+ROUTE_QUALITY_BRIDGE_SOURCE="RunPlayCore/Sources/Engine/RunPlayRouteQualityAdapter.swift"
+ROUTE_QUALITY_DIFFERENTIAL_SOURCE="RunPlayCore/Tests/RunPlayCoreTests/RouteQualityDifferentialTests.swift"
 ROUTE_QUALITY_PROCESSOR_SOURCE="RunPlayCore/Sources/Services/RouteQualityProcessor.swift"
 ROUTE_INPUT_BUFFER_SOURCE="RunPlayCore/Sources/Interop/RunPlayRouteInputBuffer.swift"
 
@@ -918,21 +918,23 @@ fi
 quality_symbol_leaks=()
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
-  case "$relative_swift_file" in
-    "$ROUTE_QUALITY_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
-  esac
+  if [[ "$relative_swift_file" == "$ROUTE_QUALITY_DIFFERENTIAL_SOURCE" ]]; then
+    continue
+  fi
   while IFS= read -r leak; do
     [[ -n "$leak" ]] && quality_symbol_leaks+=("$relative_swift_file:$leak")
   done < <(strip_comments "$swift_file" | grep -En "$quality_symbol_re" || true)
 done
 
-if [[ ${#quality_symbol_leaks[@]} -eq 0 ]]; then
-  pass "process_route_quality_geometry is invoked only from the production quality bridge"
+if [[ ${#quality_symbol_leaks[@]} -eq 0 ]] && code_matches "$ROUTE_QUALITY_DIFFERENTIAL_SOURCE" "$quality_symbol_re"; then
+  pass "process_route_quality_geometry exists only in the differential oracle"
 else
   for leak in "${quality_symbol_leaks[@]}"; do
-    fail "process_route_quality_geometry used outside the quality bridge: $leak"
+    fail "process_route_quality_geometry used outside the differential oracle: $leak"
   done
+  if ! code_matches "$ROUTE_QUALITY_DIFFERENTIAL_SOURCE" "$quality_symbol_re"; then
+    fail "missing C++ route-quality comparison in $ROUTE_QUALITY_DIFFERENTIAL_SOURCE"
+  fi
 fi
 
 # Only the heatmap coverage bridge may invoke the coverage symbol.
