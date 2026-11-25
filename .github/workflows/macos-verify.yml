@@ -21,9 +21,9 @@ on:
     inputs:
       engine:
         description: >-
-          Run the C++ engine warning build. The native engine tests run in
-          the full suite; with `full-tests` off this also runs them on their
-          own.
+          Run the C++ engine warning build. The native and Swift engine tests
+          run in the full suite; with `full-tests` off this also runs them on
+          their own.
         type: boolean
         default: true
       full-tests:
@@ -73,6 +73,11 @@ jobs:
         if: inputs.boundaries
         run: ./scripts/validate-cpp-boundaries.sh
 
+      # The Swift engine's import boundary is the same kind of static check.
+      - name: Validate Swift engine boundaries
+        if: inputs.boundaries
+        run: python3 scripts/validate-swift-engine-boundaries.py
+
       # The one boundary check only macOS can make: the SwiftPM graph on
       # Linux omits RunPlayPlatform and RunPlayStudio (they exist only under
       # `#if os(macOS)`), so a forbidden RunPlayEngineCpp dependency added to
@@ -117,6 +122,11 @@ jobs:
       - name: Run native C++ engine tests
         if: inputs.engine && !inputs.full-tests
         run: swift test --build-system swiftbuild --filter RunPlayEngineCppTests
+
+      # Same rule for the pure Swift engine: the full suite runs its tests.
+      - name: Run Swift engine tests
+        if: inputs.engine && !inputs.full-tests
+        run: swift test --build-system swiftbuild --filter RunPlayEngineTests
 
       # Build and test are separate steps so the logs show where the time
       # goes. Studio depends on every module upstream, so the whole package

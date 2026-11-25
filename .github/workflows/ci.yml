@@ -238,6 +238,11 @@ jobs:
       - name: Validate C++ architecture boundaries
         if: matrix.suite == 'tests'
         run: ./scripts/validate-cpp-boundaries.sh
+      # The Swift engine import boundary is a static source check too, so it
+      # runs wherever the C++ validator runs.
+      - name: Validate Swift engine boundaries
+        if: matrix.suite == 'tests'
+        run: python3 scripts/validate-swift-engine-boundaries.py
       - name: Print Swift version
         if: needs.changes.outputs.linux == 'true'
         run: swift --version
@@ -268,6 +273,15 @@ jobs:
           -Xcxx -Wconversion
           -Xcxx -Wsign-conversion
           -Xcxx -Wshadow
+      # The pure Swift engine's own suite. The Core gate below filters to
+      # RunPlayCoreTests, so the engine tests need this step on Linux; on
+      # macOS the full suite runs them. Warnings are errors through the
+      # manifest (strictWarnings), not a command-line flag.
+      - name: Build and test the Swift engine
+        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
+        run: |
+          ./scripts/retry-swiftpm-libdispatch-crash.sh swift build --target RunPlayEngine
+          ./scripts/retry-swiftpm-libdispatch-crash.sh swift test --filter RunPlayEngineTests
       - name: Run native C++ engine tests
         if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
         run: >-

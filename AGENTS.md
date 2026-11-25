@@ -79,10 +79,26 @@ Dependency direction is:
 
 ```text
 RunPlayStudio → RunPlayPlatform → RunPlayCore → RunPlayEngineCpp
+                                  RunPlayCore → RunPlayEngine
 ```
 
 Reverse dependencies are forbidden. `RunPlayPlatform` and `RunPlayStudio` must
-not import `RunPlayEngineCpp` directly.
+not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
+
+- **RunPlayEngine** is the pure Swift computational engine that replaces
+  `RunPlayEngineCpp` one kernel at a time. It uses only the Swift standard
+  library and the platform C math module (no Foundation, I/O, retained
+  closures, or callbacks), builds with strict memory safety, and is a
+  non-product target that only `RunPlayCore` imports, through the adapters in
+  `RunPlayCore/Sources/Engine`. A kernel in the list below runs in production
+  from `RunPlayEngine`. Its C++ counterpart then exists only as the oracle of
+  that kernel's `*DifferentialTests.swift` and release benchmark, and wherever
+  this file says C++23 performs that kernel's work, `RunPlayEngine` performs
+  it, with the same division of work between Swift and the engine. Migrated
+  kernels:
+
+  - none yet: the target exists, and Core production still calls only
+    `RunPlayEngineCpp`.
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or
@@ -433,15 +449,16 @@ A pull request runs only the lanes and test targets its changed paths can
 reach. `scripts/ci-select-lanes.sh` holds the table; the `changes` job in
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs it, and `lint`
 self-tests it on every PR. The module graph is
-`RunPlayEngineCpp` → `RunPlayCore` → `RunPlayPlatform` → `RunPlayStudio`, and
-each change reaches its own module and the modules downstream.
+`RunPlayEngineCpp` → `RunPlayCore` → `RunPlayPlatform` → `RunPlayStudio`, with
+`RunPlayEngine` beside `RunPlayEngineCpp` under `RunPlayCore`, and each change
+reaches its own module and the modules downstream.
 
 | Changed path | Runs |
 |---|---|
 | `*.md` outside `RunPlay*/**` and `Tests/**`, `docs/**` (including `docs/assets/**`), `.kiro/**`, `prompts/**`, `LICENSE` | lint only |
 | `RunPlayStudio/**` (a `*.md` there too) | macOS, Studio tests, boundary validator |
 | `RunPlayPlatform/**` | macOS, Platform and Studio tests, boundary validator |
-| `RunPlayCore/**`, `RunPlayEngineCpp/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
+| `RunPlayCore/**`, `RunPlayEngineCpp/**`, `RunPlayEngine/**`, `Tests/**`, `Package.swift`, `Package.resolved`, `scripts/**`, `script/**`, `.github/**`, `Packaging/**`, `VERSION`, and any path not listed | everything |
 
 - Every path is classified and the widest result wins; a renamed file counts
   under both its old and new path.
@@ -496,6 +513,8 @@ swift build --target RunPlayEngineCpp \
   -Xcxx -Wall -Xcxx -Wextra -Xcxx -Wpedantic \
   -Xcxx -Wconversion -Xcxx -Wsign-conversion -Xcxx -Wshadow
 swift test --filter RunPlayEngineCppTests
+python3 scripts/validate-swift-engine-boundaries.py
+swift test --filter RunPlayEngineTests
 ./scripts/run-cpp-engine-tests.sh
 ./scripts/run-cpp-engine-tests.sh --sanitize   # ASan + UBSan on native C++ tests
 swift test --filter RunPlayCoreTests

@@ -13,14 +13,16 @@
 #                                test targets
 #
 # Module graph: RunPlayEngineCpp -> RunPlayCore -> RunPlayPlatform ->
-# RunPlayStudio. A change can reach only its own module and the modules
+# RunPlayStudio, with RunPlayEngine (the pure Swift engine) beside
+# RunPlayEngineCpp under RunPlayCore. A change can reach only its own module and the modules
 # downstream of it. Every path is classified and the widest result wins:
 #
 #   *.md outside RunPlay*/** and Tests/**, docs/**, .kiro/**, prompts/**,
 #   LICENSE                              nothing (lint still runs)
 #   RunPlayStudio/**  (any file, *.md too)   macOS, Studio tests
 #   RunPlayPlatform/**                       macOS, Platform + Studio tests
-#   RunPlayCore/**, RunPlayEngineCpp/**, any other RunPlay*/**, Tests/**
+#   RunPlayCore/**, RunPlayEngineCpp/**, RunPlayEngine/**, any other
+#   RunPlay*/**, Tests/**
 #   (Package.swift, Package.resolved, scripts/**, script/**, .github/**,
 #   Packaging/**, VERSION, and every path not listed above)
 #                                            everything
@@ -42,7 +44,7 @@ classify() {
   case "$1" in
     RunPlayStudio/*) echo 1 ;;
     RunPlayPlatform/*) echo 2 ;;
-    RunPlayCore/* | RunPlayEngineCpp/*) echo 3 ;;
+    RunPlayCore/* | RunPlayEngineCpp/* | RunPlayEngine/*) echo 3 ;;
     RunPlay*/*) echo 3 ;; # a module this script does not know yet
     Tests/*) echo 3 ;;
     *.md | docs/* | .kiro/* | prompts/* | LICENSE) echo 0 ;;
@@ -99,6 +101,12 @@ self_test() {
     "Core change|pull_request|3|RunPlayCore/Sources/Models/A.swift"
     "Core md is not docs-only|pull_request|3|RunPlayCore/Sources/README.md"
     "Engine change|pull_request|3|RunPlayEngineCpp/Sources/a.cpp"
+    "Swift engine source|pull_request|3|RunPlayEngine/Sources/Geodesy.swift"
+    "Swift engine tests|pull_request|3|RunPlayEngine/Tests/GeodesyTests.swift"
+    "Swift engine test support|pull_request|3|RunPlayEngine/TestSupport/EngineParitySupport.swift"
+    "Swift engine md is not docs-only|pull_request|3|RunPlayEngine/Sources/README.md"
+    "Swift engine plus Studio gives everything|pull_request|3|RunPlayStudio/Sources/A.swift;RunPlayEngine/Sources/B.swift"
+    "docs plus Swift engine gives everything|pull_request|3|docs/a.md;RunPlayEngine/Sources/B.swift"
     "Tests md is not docs-only|pull_request|3|Tests/PackageConsumerSmoke/NOTES.md"
     "package consumer smoke|pull_request|3|Tests/PackageConsumerSmoke/Package.swift"
     "Package.swift|pull_request|3|Package.swift"
