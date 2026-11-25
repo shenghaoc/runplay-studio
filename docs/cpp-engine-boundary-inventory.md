@@ -16,7 +16,7 @@ Every public callable carries exactly one status:
 | `compute_constrained_dtw_path` | **parity/contract verification** | retained for native tests and `RunPlayRouteAlignmentDtwCppBridge` in Core tests; production calls the Swift kernel |
 | `detect_segment_windows` | **parity/contract verification** | retained for native tests and `RunPlaySegmentDetectorCppBridge` in Core tests; production calls the Swift kernel |
 | `build_elevation_profile` | **parity/contract verification** | retained for native tests and `ElevationProfileCppBenchmarkOracle` in Core tests; production calls the Swift kernel |
-| `assign_route_metric_scale_buckets` | **production** | called by `RouteMetricProfileBuilder` (pace/HR) via `RunPlayRouteMetricScaleBucketBridge` |
+| `assign_route_metric_scale_buckets` | **parity/contract verification** | retained for native tests and `RunPlayRouteMetricScaleBucketCppBridge` in Core tests; production calls the Swift kernel |
 | `compute_training_load` | **parity/contract verification** | retained for native tests and the debug-only Core differential test; production calls the Swift kernel |
 | `plan_dem_tiles` | **production** | tile-planning step of DEM elevation correction: one call per correction pass |
 | `sample_dem_elevations` | **production** | sampling step of DEM elevation correction: one call per correction pass, after Swift decodes the planned tiles |
@@ -244,7 +244,7 @@ consumers. Swift production code outside Interop never touches `runplay.*` symbo
 | `compute_constrained_dtw_path` | `RunPlayRouteAlignmentDtwCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `detect_segment_windows` | `RunPlaySegmentDetectorCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `build_elevation_profile` | `ElevationProfileCppBenchmarkOracle` (Core tests) | none; differential tests and release benchmark only |
-| `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketBridge` | `RouteMetricProfileBuilder` (pace/HR path) |
+| `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `compute_training_load` | `TrainingLoadDifferentialTests.swift` | debug differential test only |
 | `plan_dem_tiles`, `sample_dem_elevations` | `RunPlayDemElevationBridge` | DEM elevation correction: one planning and one sampling call per correction pass, with Swift decoding the planned tiles in between |
 | scalar geodesy | `RunPlayGeodesyBridge` | parity/tests only |
