@@ -1,6 +1,6 @@
 import Foundation
 
-/// The native engine boundaries whose call cardinality is asserted by tests.
+/// The engine boundaries whose call cardinality is asserted by tests.
 ///
 /// This is a plain type with no storage, so naming it costs nothing in release
 /// builds; only the DEBUG-gated tally below holds state.
@@ -16,11 +16,10 @@ enum NativeCallBoundary: Sendable {
     case demSampling
 }
 
-/// Test-only observation of native C++ engine invocations.
+/// Test-only observation of engine invocations.
 ///
-/// `RunPlayEngineCpp` must be entered exactly once per production operation
-/// (see `docs/cpp-engine-boundary-inventory.md`). Proving that requires counting
-/// real calls, but the count must not become part of production behaviour.
+/// Most observed calls enter `RunPlayEngineCpp`; training load enters the
+/// Swift kernel. The call counts do not become part of production behaviour.
 ///
 /// Two properties matter here:
 ///

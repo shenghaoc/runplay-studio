@@ -450,6 +450,9 @@ def contains_engine_module_token(source: str) -> bool:
     )
 
 
+CORE_TEST_TARGET = Path("RunPlayCore/Tests/RunPlayCoreTests")
+
+
 def validate_sources(
     sources: dict[Path, str],
     allowed_prefix: Path,
@@ -459,6 +462,7 @@ def validate_sources(
     allowed_files: list[Path] = []
     allowed_prefix = allowed_prefix.resolve()
     import_count = 0
+    core_test_target = allowed_prefix.parents[2] / CORE_TEST_TARGET
 
     for path, source in sources.items():
         lexical_imports = engine_imports(source)
@@ -517,11 +521,15 @@ def validate_sources(
             is_allowed_path = (
                 resolved_path == allowed_prefix
                 or allowed_prefix in resolved_path.parents
+                or (
+                    resolved_path.parent == core_test_target
+                    and resolved_path.name.endswith("DifferentialTests.swift")
+                )
             )
             if not is_allowed_path:
                 errors.append(
                     f"{path}:{detected_import.line}: RunPlayEngineCpp import is "
-                    "outside RunPlayCore/Sources/Interop"
+                    "outside RunPlayCore/Sources/Interop or the Core differential test target"
                 )
                 continue
 
@@ -541,7 +549,7 @@ def validate_sources(
                 or engine_import.has_escaped_identifier
             ):
                 errors.append(
-                    f"{path}:{engine_import.line}: engine imports in Interop "
+                    f"{path}:{engine_import.line}: engine imports "
                     "must be exactly unscoped, unattributed, and unescaped "
                     "'internal import RunPlayEngineCpp'"
                 )
@@ -563,6 +571,9 @@ def run_self_test(swiftc: str) -> int:
             "// public import RunPlayEngineCpp\n"
         )
     }
+    core_test_target = allowed_prefix.parents[2] / CORE_TEST_TARGET
+    for filename in ("TrainingLoadDifferentialTests.swift", "DTWDifferentialTests.swift"):
+        valid_sources[core_test_target / filename] = "internal import RunPlayEngineCpp\n"
     errors, _ = validate_sources(valid_sources, allowed_prefix)
     if errors:
         print("Swift import validator rejected its valid fixture", file=sys.stderr)
@@ -583,6 +594,27 @@ def run_self_test(swiftc: str) -> int:
             allowed_prefix / "Bridge.swift": (
                 "internal import struct\nRunPlayEngineCpp.RouteInputSample\n"
             )
+        },
+        "production differential impostor": {
+            Path("/repo/RunPlayCore/Sources/TrainingLoadDifferentialTests.swift"):
+                "internal import RunPlayEngineCpp\n",
+        },
+        "sibling target differential impostor": {
+            core_test_target.with_name("OtherTests") / "DTWDifferentialTests.swift":
+                "internal import RunPlayEngineCpp\n",
+        },
+        "nested differential impostor": {
+            core_test_target / "Nested/DTWDifferentialTests.swift":
+                "internal import RunPlayEngineCpp\n",
+        },
+        "ordinary Core test": {
+            core_test_target / "TrainingLoadTests.swift":
+                "internal import RunPlayEngineCpp\n",
+        },
+        "exported differential oracle import": {
+            core_test_target / "TrainingLoadDifferentialTests.swift": (
+                "@_exported internal import RunPlayEngineCpp\n"
+            ),
         },
         "wrong layer": {
             Path("/repo/RunPlayPlatform/Sources/Escape.swift"): (

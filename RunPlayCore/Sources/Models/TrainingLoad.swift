@@ -4,13 +4,13 @@ import Foundation
 ///
 /// The canonical load is Banister TRIMP in its exponential form:
 /// `minutes × HRreserve × y · e^(k × HRreserve)` summed over same-segment
-/// heart-rate intervals, computed by the native training-load kernel in one
+/// heart-rate intervals, computed by the Swift training-load kernel in one
 /// bulk pass. Runs without usable heart-rate data carry an estimated load
 /// derived from pace and duration instead — informative on its own, clearly
 /// labelled, and excluded from the fitness/fatigue/form model by default.
 public struct TrainingLoadSnapshot: Codable, Equatable, Hashable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        /// Computed from recorded heart-rate intervals through the native
+        /// Computed from recorded heart-rate intervals through the Swift
         /// kernel.
         case measured
         /// No usable heart rate: derived from pace and duration by a

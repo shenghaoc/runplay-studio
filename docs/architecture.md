@@ -225,6 +225,11 @@ Each route operation must cross the engine boundary in one bulk call, never one
 call per point. Platform and Studio must not traverse C++ containers or import
 the engine directly.
 
+Heart-rate training load runs in the Swift engine: one borrowed sample span,
+a fixed-size summary, and typed failure instead of a C++ call. Core retains
+interval weights (never across recording gaps or pauses), policy, estimation,
+cancellation, and persistence.
+
 Approved pointer boundaries:
 
 - `const RouteInputSample*` input for route inspection
@@ -265,17 +270,6 @@ Approved pointer boundaries:
   UUIDs, public `ElevationProfile`/`ElevationProfileSample` models, all
   distance-query APIs, policy ownership, cancellation, diagnostics, and
   persistence.
-- heart-rate training load: `const TrainingLoadSample*` input samples plus a
-  by-value policy — and no output pointer. Every product of the pass (Banister
-  TRIMP, five-zone seconds, valid and covered time, interval counts) returns
-  by value in `TrainingLoadSummary`; an error summary is zeroed except for the
-  status. One native call occurs per training-load pass, and cancellation is
-  cooperative Swift work around it. C++23 performs interval-weighted TRIMP
-  accumulation, heart-rate-reserve clamping, and zone bucketing. Swift
-  retains interval construction from route points (same-segment active-time
-  weights that never span a recording gap or pause), the athlete-profile
-  policy, the measured-versus-estimated decision, the estimator, public
-  models, cancellation, and persistence.
 - DEM tile planning: `const DemRouteSample*` input coordinates plus a
   caller-owned `DemTileKey*` output. Bounded rather than capacity-negotiated:
   Swift passes an output capacity equal to its tile budget, the planner's
@@ -326,10 +320,9 @@ External package consumption:
 SwiftPM attaches C++ target module maps to every transitive Swift dependent of
 `RunPlayCore`. Those dependents must compile with
 `.interoperabilityMode(.Cxx)` so the clang importer can parse C++ standard
-headers. That build-setting requirement does **not** authorize
-`import RunPlayEngineCpp` outside `RunPlayCore/Sources/Interop/`. Platform and
-Studio keep pure Swift public APIs; the engine module remains an implementation
-detail of Core.
+headers. In production, only `RunPlayCore/Sources/Interop/` may import the C++
+module. The named Core training-load differential test also imports it to run
+the native oracle. Platform and Studio keep pure Swift public APIs.
 
 ### Commands and accessibility
 

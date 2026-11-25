@@ -100,6 +100,9 @@ not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
   - the route input sample ceiling (`EngineRouteLimits`), which Core's
     preflight reads; scalar geodesy and the route input value are ported for
     the kernels that follow and have no production caller of their own
+  - heart-rate training load (`TrainingLoad`): interval-weighted Banister
+    TRIMP accumulation and five-zone time bucketing, one engine call per
+    training-load pass
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or

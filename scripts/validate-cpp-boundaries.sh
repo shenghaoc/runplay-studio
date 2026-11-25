@@ -1935,14 +1935,14 @@ else
   fail "route metric benchmark runner or opt-in guard missing"
 fi
 
-# --- Training load bridge -----------------------------------------------------
+# --- Training load differential oracle -----------------------------------------------------
 
-TRAINING_LOAD_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlayTrainingLoadBridge.swift"
+TRAINING_LOAD_ORACLE="RunPlayCore/Tests/RunPlayCoreTests/TrainingLoadDifferentialTests.swift"
 
-if [[ -f "$TRAINING_LOAD_BRIDGE_SOURCE" ]]; then
-  pass "training load bridge exists"
+if [[ -f "$TRAINING_LOAD_ORACLE" ]]; then
+  pass "training load differential oracle exists"
 else
-  fail "missing training load bridge $TRAINING_LOAD_BRIDGE_SOURCE"
+  fail "missing training load differential oracle $TRAINING_LOAD_ORACLE"
 fi
 
 training_load_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*compute_training_load([^[:alnum:]_]|$)'
@@ -1977,19 +1977,21 @@ training_load_native_leaks=()
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
   case "$relative_swift_file" in
-    "$TRAINING_LOAD_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
+    "$TRAINING_LOAD_ORACLE") continue ;;
   esac
   while IFS= read -r leak; do
     [[ -n "$leak" ]] && training_load_native_leaks+=("$relative_swift_file:$leak")
   done < <(strip_comments "$swift_file" | grep -En "$training_load_native_re" || true)
 done
 
+if ! code_matches "$TRAINING_LOAD_ORACLE" "$training_load_native_re"; then
+  fail "training load differential oracle does not invoke compute_training_load"
+fi
 if [[ ${#training_load_native_leaks[@]} -eq 0 ]]; then
-  pass "compute_training_load is invoked only from the training load bridge"
+  pass "compute_training_load is invoked only by the Swift training-load differential oracle"
 else
   for leak in "${training_load_native_leaks[@]}"; do
-    fail "compute_training_load used outside the training load bridge: $leak"
+    fail "compute_training_load used outside the training-load differential oracle: $leak"
   done
 fi
 

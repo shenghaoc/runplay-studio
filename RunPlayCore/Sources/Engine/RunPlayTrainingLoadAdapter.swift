@@ -1,7 +1,4 @@
-import Foundation
-
-internal import CxxStdlib
-internal import RunPlayEngineCpp
+internal import RunPlayEngine
 
 /// Pure Swift result of one training-load pass.
 struct RunPlayTrainingLoadResult: Equatable, Sendable {
@@ -20,7 +17,7 @@ enum RunPlayTrainingLoadBridgeError: Error, Equatable {
     case engineContractViolation
 }
 
-/// Adapter over the native `compute_training_load` boundary.
+/// Core adapter over the Swift training-load kernel.
 ///
 /// One call covers one whole workout. The interval weights are Swift-owned
 /// active-time semantics: the caller only passes same-segment adjacent-point
@@ -37,12 +34,10 @@ enum RunPlayTrainingLoadBridge {
         cancellationCheckStride: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> RunPlayTrainingLoadResult {
-        NativeCallObserver.record(.trainingLoad)
-
         guard heartRatesBPM.count == weightsSeconds.count else {
             throw RunPlayTrainingLoadBridgeError.invalidInputContract
         }
-        guard zoneLowerBoundsBPM.count == Int(runplay.training_load_zone_count) else {
+        guard zoneLowerBoundsBPM.count == TrainingLoadKernel.zoneCount else {
             throw RunPlayTrainingLoadBridgeError.invalidPolicy
         }
         guard restingHeartRateBPM.isFinite, restingHeartRateBPM > 0,
@@ -66,7 +61,7 @@ enum RunPlayTrainingLoadBridge {
         let stride = max(1, cancellationCheckStride)
         try checkCancellation(isCancelled)
 
-        var input = ContiguousArray<runplay.TrainingLoadSample>()
+        var input = ContiguousArray<TrainingLoadSample>()
         input.reserveCapacity(count)
         for index in 0..<count {
             if index.isMultiple(of: stride), isCancelled() { throw CancellationError() }
@@ -74,71 +69,71 @@ enum RunPlayTrainingLoadBridge {
             guard weight.isFinite, weight >= 0 else {
                 throw RunPlayTrainingLoadBridgeError.invalidInputContract
             }
-            var sample = runplay.TrainingLoadSample()
-            sample.weight_seconds = weight
-            if let rate = heartRatesBPM[index] {
+            let rate = heartRatesBPM[index]
+            if let rate {
                 guard rate.isFinite, rate > 0 else {
                     throw RunPlayTrainingLoadBridgeError.invalidInputContract
                 }
-                sample.heart_rate_bpm = rate
-                sample.has_heart_rate = 1
             }
-            input.append(sample)
+            input.append(TrainingLoadSample(
+                heartRateBPM: rate ?? 0, weightSeconds: weight, hasHeartRate: rate == nil ? 0 : 1
+            ))
         }
 
-        var policy = runplay.TrainingLoadPolicy()
-        policy.resting_heart_rate_bpm = restingHeartRateBPM
-        policy.maximum_heart_rate_bpm = maximumHeartRateBPM
-        policy.coefficient_multiplier = coefficientMultiplier
-        policy.coefficient_exponent = coefficientExponent
-        policy.zone1_lower_bound_bpm = zoneLowerBoundsBPM[0]
-        policy.zone2_lower_bound_bpm = zoneLowerBoundsBPM[1]
-        policy.zone3_lower_bound_bpm = zoneLowerBoundsBPM[2]
-        policy.zone4_lower_bound_bpm = zoneLowerBoundsBPM[3]
-        policy.zone5_lower_bound_bpm = zoneLowerBoundsBPM[4]
+        let policy = RunPlayEngine.TrainingLoadPolicy(
+            restingHeartRateBPM: restingHeartRateBPM,
+            maximumHeartRateBPM: maximumHeartRateBPM,
+            coefficientMultiplier: coefficientMultiplier,
+            coefficientExponent: coefficientExponent,
+            zoneLowerBoundsBPM: [
+                zoneLowerBoundsBPM[0], zoneLowerBoundsBPM[1], zoneLowerBoundsBPM[2],
+                zoneLowerBoundsBPM[3], zoneLowerBoundsBPM[4],
+            ]
+        )
 
         try checkCancellation(isCancelled)
-        let summary = input.withUnsafeBufferPointer { buffer in
-            runplay.compute_training_load(
-                buffer.baseAddress,
-                buffer.count,
-                policy
-            )
+        let computed: Result<TrainingLoadSummary, TrainingLoadError>
+        do throws(TrainingLoadError) {
+            // The scoped test tally counts the actual kernel call, not C++ interop.
+            NativeCallObserver.record(.trainingLoad)
+            let value = try TrainingLoadKernel.compute(input.span, policy: policy)
+            computed = .success(value)
+        } catch {
+            computed = .failure(error)
         }
+        // The previous bridge checked cancellation before translating the status.
         try checkCancellation(isCancelled)
-
-        switch summary.status {
-        case .success:
-            break
-        case .invalid_policy:
+        let summary: TrainingLoadSummary
+        switch computed {
+        case let .success(value):
+            summary = value
+        case .failure(.invalidPolicy):
             throw RunPlayTrainingLoadBridgeError.invalidPolicy
-        case .invalid_input_contract:
+        case .failure(.invalidInputContract):
             throw RunPlayTrainingLoadBridgeError.invalidInputContract
-        case .invalid_input_buffer, .internal_failure:
-            throw RunPlayTrainingLoadBridgeError.engineContractViolation
-        default:
+        case .failure(.internalFailure):
             throw RunPlayTrainingLoadBridgeError.engineContractViolation
         }
 
-        guard let validCount = Int(exactly: summary.valid_interval_count),
-              let totalCount = Int(exactly: summary.total_interval_count),
+        guard let validCount = Int(exactly: summary.validIntervalCount),
+              let totalCount = Int(exactly: summary.totalIntervalCount),
               totalCount == count,
               validCount <= totalCount,
-              summary.total_trimp.isFinite, summary.total_trimp >= 0,
-              summary.valid_heart_rate_seconds.isFinite, summary.valid_heart_rate_seconds >= 0,
-              summary.covered_seconds.isFinite, summary.covered_seconds >= 0,
-              summary.valid_heart_rate_seconds <= summary.covered_seconds,
-              summary.has_mean_heart_rate == 0 || summary.has_mean_heart_rate == 1
+              summary.totalTRIMP.isFinite, summary.totalTRIMP >= 0,
+              summary.validHeartRateSeconds.isFinite, summary.validHeartRateSeconds >= 0,
+              summary.coveredSeconds.isFinite, summary.coveredSeconds >= 0,
+              summary.validHeartRateSeconds <= summary.coveredSeconds,
+              summary.hasMeanHeartRate == 0 || summary.hasMeanHeartRate == 1
         else {
             throw RunPlayTrainingLoadBridgeError.engineContractViolation
         }
 
         let zoneSeconds = [
-            summary.zone1_seconds,
-            summary.zone2_seconds,
-            summary.zone3_seconds,
-            summary.zone4_seconds,
-            summary.zone5_seconds,
+            summary.zoneSeconds[0],
+            summary.zoneSeconds[1],
+            summary.zoneSeconds[2],
+            summary.zoneSeconds[3],
+            summary.zoneSeconds[4],
         ]
         var zoneTotal = 0.0
         for zone in zoneSeconds {
@@ -147,30 +142,30 @@ enum RunPlayTrainingLoadBridge {
             }
             zoneTotal += zone
         }
-        guard abs(zoneTotal - summary.valid_heart_rate_seconds) <= 1e-9 * max(1.0, summary.valid_heart_rate_seconds)
+        guard abs(zoneTotal - summary.validHeartRateSeconds) <= 1e-9 * max(1.0, summary.validHeartRateSeconds)
         else {
             throw RunPlayTrainingLoadBridgeError.engineContractViolation
         }
 
         let meanRate: Double?
-        if summary.has_mean_heart_rate == 1 {
-            guard summary.mean_heart_rate_bpm.isFinite, summary.mean_heart_rate_bpm > 0 else {
+        if summary.hasMeanHeartRate == 1 {
+            guard summary.meanHeartRateBPM.isFinite, summary.meanHeartRateBPM > 0 else {
                 throw RunPlayTrainingLoadBridgeError.engineContractViolation
             }
-            meanRate = summary.mean_heart_rate_bpm
+            meanRate = summary.meanHeartRateBPM
         } else {
-            guard summary.mean_heart_rate_bpm == 0 else {
+            guard summary.meanHeartRateBPM == 0 else {
                 throw RunPlayTrainingLoadBridgeError.engineContractViolation
             }
             meanRate = nil
         }
 
         return RunPlayTrainingLoadResult(
-            totalTRIMP: summary.total_trimp,
+            totalTRIMP: summary.totalTRIMP,
             meanHeartRateBPM: meanRate,
             zoneSeconds: zoneSeconds,
-            validHeartRateSeconds: summary.valid_heart_rate_seconds,
-            coveredSeconds: summary.covered_seconds,
+            validHeartRateSeconds: summary.validHeartRateSeconds,
+            coveredSeconds: summary.coveredSeconds,
             validIntervalCount: validCount,
             totalIntervalCount: totalCount
         )

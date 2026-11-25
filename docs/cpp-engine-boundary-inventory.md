@@ -17,15 +17,15 @@ Every public callable carries exactly one status:
 | `detect_segment_windows` | **production** | called by the segment detector via `RunPlaySegmentDetectorBridge` |
 | `build_elevation_profile` | **production** | called by the elevation profile builder via `RunPlayElevationProfileBridge` |
 | `assign_route_metric_scale_buckets` | **production** | called by `RouteMetricProfileBuilder` (pace/HR) via `RunPlayRouteMetricScaleBucketBridge` |
-| `compute_training_load` | **production** | called by the training-load pass (analysis and backfill) via `RunPlayTrainingLoadBridge` |
+| `compute_training_load` | **parity/contract verification** | retained for native tests and the debug-only Core differential test; production calls the Swift kernel |
 | `plan_dem_tiles` | **production** | tile-planning step of DEM elevation correction: one call per correction pass |
 | `sample_dem_elevations` | **production** | sampling step of DEM elevation correction: one call per correction pass, after Swift decodes the planned tiles |
 | `inspect_route_batch` | **parity/contract verification** | no production caller; consumed only by `RunPlayRouteBridge` for parity tests and validators |
 | `is_valid_coordinate`, `haversine_distance_meters`, `project_lat_lon_to_local_meters` | **parity/test utility** | production Swift geodesy uses `GeoDistance`; these pin the C++ implementations against it |
 | `engine_info` | **smoke/identity** | build/ABI identity probe; consumed by engine smoke tests and the external-consumer smoke |
 
-Nine pointer-bearing boundaries are production; the tenth
-(`inspect_route_batch`) is not. Its continued public exposure is deliberate: it
+Eight pointer-bearing boundaries are production; `compute_training_load` and
+`inspect_route_batch` are verification only. The latter
 is the value-contract verification boundary — the only callable that exercises
 the complete `RouteInputSample` field mapping (per-field value counts, segment
 transitions, and the field digest) through the same borrowed-buffer path the
@@ -245,7 +245,7 @@ symbols directly.
 | `detect_segment_windows` | `RunPlaySegmentDetectorBridge` | segment detector |
 | `build_elevation_profile` | `RunPlayElevationProfileBridge` | elevation profile builder |
 | `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketBridge` | `RouteMetricProfileBuilder` (pace/HR path) |
-| `compute_training_load` | `RunPlayTrainingLoadBridge` | training-load pass (workout analysis and library backfill) |
+| `compute_training_load` | `TrainingLoadDifferentialTests.swift` | debug differential test only |
 | `plan_dem_tiles`, `sample_dem_elevations` | `RunPlayDemElevationBridge` | DEM elevation correction: one planning and one sampling call per correction pass, with Swift decoding the planned tiles in between |
 | scalar geodesy | `RunPlayGeodesyBridge` | parity/tests only |
 
@@ -269,7 +269,7 @@ external package consumers.
 | `detect_segment_windows` | `SegmentDetectionTests.cpp` | `SwiftSegmentDetectorOracle` | `run-segment-detector-benchmark.sh` |
 | `build_elevation_profile` | `ElevationProfileTests.cpp` | `SwiftElevationProfileOracle` | `run-elevation-profile-benchmark.sh` |
 | `assign_route_metric_scale_buckets` | `RouteMetricScaleBucketTests.cpp` | `SwiftRouteMetricScaleBucketOracle` | `run-route-metric-scale-bucket-benchmark.sh` |
-| `compute_training_load` | `TrainingLoadTests.cpp` | `RunPlayTrainingLoadBridgeTests` (hand-computed parity through the bridge) | — |
+| `compute_training_load` | `TrainingLoadTests.cpp` | `TrainingLoadDifferentialTests` (bit-exact Swift/C++ and C++-derived goldens) | — |
 | `plan_dem_tiles`, `sample_dem_elevations` | `DemElevationSamplingTests.cpp` (including the seeded property that sampling with exactly the planned tiles never reports a missing tile, and that every planned tile is read) | `SwiftDemSamplingOracle` (1,000 seeded fixtures through the bridge, bit-exact) | `run-route-quality-benchmark.sh` (DEM section) |
 | scalar geodesy | `GeodesyTests.cpp` | `GeoDistance.swift` | — |
 | `engine_info` | `EngineInfoTests.cpp` | — (identity only) | — |
@@ -292,8 +292,8 @@ runner measures and how it is invoked.
 - Segment detection: 1 native call per search.
 - Elevation profile: 1 native call per build.
 - Pace/HR scale/bucket: 1 native call per finalization.
-- Training load: 1 native call per measured training-load pass; estimated
-  loads are Swift scalar arithmetic and make 0 native calls.
+- Training load: 0 C++ calls. Each measured pass makes one Swift kernel call;
+  estimated loads use Swift scalar arithmetic without a kernel call.
 - DEM elevation correction: 1 planning call and 1 sampling call per correction
   pass; 1 planning call and no sampling call when the route needs more tiles
   than the budget; 0 calls for an empty route. Tile decoding between the two
@@ -314,9 +314,9 @@ counter, no lock, and no mutable diagnostic state, and `NativeCallObserver
 - `scripts/validate-cpp-public-ast.py` holds the approved-pointer allow-list
   (10 pointer-bearing functions) and rejects any other public raw pointer,
   non-`noexcept` callable, or exposed standard-library container type.
-- `scripts/validate-cpp-boundaries.sh` asserts each C++ symbol is invoked only
-  from its designated bridge, that bridges stay under `Interop`, and that no
-  production Swift file references `runplay.*` directly.
+- `scripts/validate-cpp-boundaries.sh` confines C++ calls to their designated
+  Core Interop bridges or named differential oracle tests. No service, Platform,
+  or Studio source references `runplay.*` directly.
 - `scripts/validate-cpp-boundaries.sh` also proves native discovery coverage by
   comparing two independently produced sets: its own `find` over the engine tree
   against `scripts/run-cpp-engine-tests.sh --list-sources`, which prints the
