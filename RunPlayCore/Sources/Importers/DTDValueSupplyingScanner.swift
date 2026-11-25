@@ -102,50 +102,67 @@ enum DTDValueSupplyingScanner {
             }
             let keyword = String(decoding: name, as: UTF8.self)
 
-            // Read the body up to the closing `>`, honouring quotes so a `>`
-            // inside a literal does not end the declaration early and hide a
-            // later violation.
-            var k = j
-            var quote: UInt8?
-            while k < bytes.count {
-                let c = bytes[k]
-                if let q = quote {
-                    if c == q { quote = nil }
-                } else if c == UInt8(ascii: "\"") || c == UInt8(ascii: "'") {
-                    quote = c
-                } else if c == UInt8(ascii: ">") {
-                    break
-                }
-                k += 1
-            }
+            let k = declarationEnd(bytes, from: j)
             let body = j..<min(k, bytes.count)
 
-            switch keyword {
-            case "ENTITY":
-                return .entityDeclaration
-            case "NOTATION":
-                return .notationDeclaration
-            case "ATTLIST":
-                if contains(bytes, in: body, "#FIXED") {
-                    return .fixedAttributeDefault
-                }
-                // A quote anywhere in an ATTLIST body is a supplied default:
-                // every other token in it (a name, a type, `#REQUIRED`,
-                // `#IMPLIED`) is unquoted.
-                if indexOfByte(bytes, in: body, UInt8(ascii: "\"")) != nil
-                    || indexOfByte(bytes, in: body, UInt8(ascii: "'")) != nil {
-                    return .quotedAttributeDefault
-                }
-                if let type = firstNonCDATAAttributeType(bytes, in: body) {
-                    return .nonCDATAAttributeType(type)
-                }
-            default:
-                if contains(bytes, in: body, "#FIXED") {
-                    return .fixedAttributeDefault
-                }
+            if let violation = violation(keyword: keyword, bytes, body: body) {
+                return violation
             }
 
             i = (k < bytes.count) ? k + 1 : bytes.count
+        }
+        return nil
+    }
+
+    /// The index of the `>` that closes a declaration whose body starts at
+    /// `start`, or `bytes.count` when none does. Quotes are honoured so a `>`
+    /// inside a literal does not end the declaration early and hide a later
+    /// violation.
+    private static func declarationEnd(_ bytes: [UInt8], from start: Int) -> Int {
+        var k = start
+        var quote: UInt8?
+        while k < bytes.count {
+            let c = bytes[k]
+            if let q = quote {
+                if c == q { quote = nil }
+            } else if c == UInt8(ascii: "\"") || c == UInt8(ascii: "'") {
+                quote = c
+            } else if c == UInt8(ascii: ">") {
+                break
+            }
+            k += 1
+        }
+        return k
+    }
+
+    /// The policy violation a declaration with this keyword and body carries,
+    /// if any.
+    private static func violation(
+        keyword: String, _ bytes: [UInt8], body: Range<Int>
+    ) -> DTDPolicyViolation? {
+        switch keyword {
+        case "ENTITY":
+            return .entityDeclaration
+        case "NOTATION":
+            return .notationDeclaration
+        case "ATTLIST":
+            if contains(bytes, in: body, "#FIXED") {
+                return .fixedAttributeDefault
+            }
+            // A quote anywhere in an ATTLIST body is a supplied default:
+            // every other token in it (a name, a type, `#REQUIRED`,
+            // `#IMPLIED`) is unquoted.
+            if indexOfByte(bytes, in: body, UInt8(ascii: "\"")) != nil
+                || indexOfByte(bytes, in: body, UInt8(ascii: "'")) != nil {
+                return .quotedAttributeDefault
+            }
+            if let type = firstNonCDATAAttributeType(bytes, in: body) {
+                return .nonCDATAAttributeType(type)
+            }
+        default:
+            if contains(bytes, in: body, "#FIXED") {
+                return .fixedAttributeDefault
+            }
         }
         return nil
     }

@@ -37,6 +37,13 @@ enum WorkoutTimestampOffsetScanner {
         }
         let sign = trimmed[signIndex]
         let tail = trimmed[trimmed.index(after: signIndex)...]
+        return numericOffsetSeconds(sign: sign, tail: tail)
+    }
+
+    /// The offset a `±HH:MM`, `±HHMM` or `±HH` designator states, from its
+    /// sign and the text after it, or `nil` when the digits are malformed or
+    /// out of range.
+    private static func numericOffsetSeconds(sign: Character, tail: Substring) -> Int? {
         let digits = tail.filter { $0 != ":" }
         guard digits.count == 2 || digits.count == 4,
               digits.allSatisfy({ $0.isASCII && $0.isNumber })

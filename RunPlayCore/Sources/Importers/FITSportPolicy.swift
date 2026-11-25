@@ -90,6 +90,8 @@ public enum FITSportPolicy {
     }
 
     private static func displayName(_ sport: FITSport) -> String {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each FIT sport to its localized display name.
         switch sport {
         case .running: return coreLocalized("Running")
         case .cycling: return coreLocalized("Cycling")

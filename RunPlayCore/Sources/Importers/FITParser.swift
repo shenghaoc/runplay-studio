@@ -20,6 +20,8 @@ public enum FITError: Error, LocalizedError, Sendable {
     case unsupportedCompressedTimestamp
 
     public var errorDescription: String? {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each FIT parse error to its localized description.
         switch self {
         case .emptyFile: return coreLocalized("FIT file is empty")
         case .invalidHeader: return coreLocalized("Invalid FIT file header")
@@ -214,94 +216,21 @@ public struct FITParser {
 
             // Check for compressed timestamp header (bit 7 set)
             if recordHeader & compressedHeaderMask != 0 {
-                let localType = (recordHeader & compressedLocalTypeMask) >> compressedLocalTypeShift
-                let timeOffset = UInt32(recordHeader & compressedTimeOffsetMask)
-
-                guard hasBaselineTimestamp else {
-                    throw FITError.compressedTimestampWithoutBaseline
-                }
-
-                guard let def = definitions[localType] else {
-                    throw FITError.invalidCompressedDefinition
-                }
-
-                // Reconstruct timestamp with wrap handling
-                // FIT SDK: offsetDelta is masked to 5 bits; always added to lastTimestamp
-                let offsetDelta = (timeOffset &- (lastTimestamp & UInt32(compressedTimeOffsetMask)))
-                    & UInt32(compressedTimeOffsetMask)
-                let timestamp = lastTimestamp &+ offsetDelta
-                lastTimestamp = timestamp
-
-                // Parse the data message (compressed headers don't include the timestamp field)
-                guard let timestampField = def.fields.first,
-                      timestampField.fieldNumber == FITRecordField.timestamp.rawValue,
-                      timestampField.size == 4,
-                      timestampField.baseType == .uint32
-                else {
-                    throw FITError.invalidCompressedDefinition
-                }
-                let dataSize = def.totalDataSize - Int(timestampField.size)
-                guard offset + dataSize <= dataEndOffset else {
-                    throw FITError.unexpectedEndOfFile
-                }
-
-                let isLittleEndian = def.architecture == 0
-                var reader = FITBinaryReader(
+                try parseCompressedTimestampMessage(
+                    recordHeader: recordHeader,
                     data: data,
-                    offset: offset,
-                    endOffset: offset + dataSize,
-                    littleEndian: isLittleEndian
-                )
-
-                // Read field values (timestamp is NOT in the payload for compressed records)
-                var fieldValues: [UInt8: FITFieldValue] = [:]
-                for field in def.fields {
-                    if field.fieldNumber == 253 {
-                        // Timestamp field is encoded in the compressed header, not in payload
-                        continue
-                    }
-                    // Use readBaseTypeArray to consume all field.size bytes
-                    let values = try reader.readBaseTypeArray(
-                        baseType: field.baseType,
-                        fieldSize: Int(field.size)
-                    )
-                    // Store the first value; multi-element fields are handled by readBaseTypeArray
-                    if let firstValue = values.first {
-                        fieldValues[field.fieldNumber] = firstValue
-                    }
-                }
-
-                // Capture developer field payloads on records; skip them on
-                // every other message. Resolution happens after parsing.
-                let developerFieldValues = try readDeveloperFieldValues(
-                    reader: &reader,
-                    definition: def,
-                    isRecord: def.globalMessageNumber == FITGlobalMessage.record.rawValue,
-                    retention: &developerRetention
-                )
-
-                offset = reader.offset
-
-                messageIndex += 1
-
-                appendDecodedMessage(
-                    globalMessageNumber: def.globalMessageNumber,
-                    fieldValues: fieldValues,
-                    developerFieldValues: developerFieldValues,
-                    timestampOverride: timestamp,
+                    offset: &offset,
+                    dataEndOffset: dataEndOffset,
+                    definitions: definitions,
+                    lastTimestamp: &lastTimestamp,
+                    hasBaselineTimestamp: hasBaselineTimestamp,
+                    messageIndex: &messageIndex,
+                    developerRetention: &developerRetention,
                     decodedFile: &decodedFile
                 )
             } else {
                 // Normal or definition message
-                let isDefinition = (recordHeader & 0x40) != 0
-                let hasDeveloperData = isDefinition && (recordHeader & 0x20) != 0
-                let localType = recordHeader & 0x0F
-
-                guard recordHeader & 0x10 == 0,
-                      isDefinition || recordHeader & 0x20 == 0
-                else {
-                    throw FITError.corruptedData(coreLocalized("FIT record header has reserved bits set"))
-                }
+                let (isDefinition, hasDeveloperData, localType) = try normalRecordHeader(recordHeader)
 
                 if isDefinition {
                     definitionCount += 1
@@ -343,6 +272,118 @@ public struct FITParser {
         decodedFile.droppedDeveloperFieldValueCount = developerRetention.droppedCount
 
         return decodedFile
+    }
+
+    /// Parse one data message whose record header carries a compressed
+    /// timestamp: the header holds the local type and a 5-bit time offset from
+    /// the last full timestamp, and the payload omits the timestamp field.
+    private static func parseCompressedTimestampMessage(
+        recordHeader: UInt8,
+        data: Data,
+        offset: inout Int,
+        dataEndOffset: Int,
+        definitions: [UInt8: FITDefinitionMessage],
+        lastTimestamp: inout UInt32,
+        hasBaselineTimestamp: Bool,
+        messageIndex: inout Int,
+        developerRetention: inout DeveloperValueRetention,
+        decodedFile: inout FITDecodedFile
+    ) throws {
+        let localType = (recordHeader & compressedLocalTypeMask) >> compressedLocalTypeShift
+        let timeOffset = UInt32(recordHeader & compressedTimeOffsetMask)
+
+        guard hasBaselineTimestamp else {
+            throw FITError.compressedTimestampWithoutBaseline
+        }
+
+        guard let def = definitions[localType] else {
+            throw FITError.invalidCompressedDefinition
+        }
+
+        // Reconstruct timestamp with wrap handling
+        // FIT SDK: offsetDelta is masked to 5 bits; always added to lastTimestamp
+        let offsetDelta = (timeOffset &- (lastTimestamp & UInt32(compressedTimeOffsetMask)))
+            & UInt32(compressedTimeOffsetMask)
+        let timestamp = lastTimestamp &+ offsetDelta
+        lastTimestamp = timestamp
+
+        // Parse the data message (compressed headers don't include the timestamp field)
+        guard let timestampField = def.fields.first,
+              timestampField.fieldNumber == FITRecordField.timestamp.rawValue,
+              timestampField.size == 4,
+              timestampField.baseType == .uint32
+        else {
+            throw FITError.invalidCompressedDefinition
+        }
+        let dataSize = def.totalDataSize - Int(timestampField.size)
+        guard offset + dataSize <= dataEndOffset else {
+            throw FITError.unexpectedEndOfFile
+        }
+
+        let isLittleEndian = def.architecture == 0
+        var reader = FITBinaryReader(
+            data: data,
+            offset: offset,
+            endOffset: offset + dataSize,
+            littleEndian: isLittleEndian
+        )
+
+        // Read field values (timestamp is NOT in the payload for compressed records)
+        var fieldValues: [UInt8: FITFieldValue] = [:]
+        for field in def.fields {
+            if field.fieldNumber == 253 {
+                // Timestamp field is encoded in the compressed header, not in payload
+                continue
+            }
+            // Use readBaseTypeArray to consume all field.size bytes
+            let values = try reader.readBaseTypeArray(
+                baseType: field.baseType,
+                fieldSize: Int(field.size)
+            )
+            // Store the first value; multi-element fields are handled by readBaseTypeArray
+            if let firstValue = values.first {
+                fieldValues[field.fieldNumber] = firstValue
+            }
+        }
+
+        // Capture developer field payloads on records; skip them on
+        // every other message. Resolution happens after parsing.
+        let developerFieldValues = try readDeveloperFieldValues(
+            reader: &reader,
+            definition: def,
+            isRecord: def.globalMessageNumber == FITGlobalMessage.record.rawValue,
+            retention: &developerRetention
+        )
+
+        offset = reader.offset
+
+        messageIndex += 1
+
+        appendDecodedMessage(
+            globalMessageNumber: def.globalMessageNumber,
+            fieldValues: fieldValues,
+            developerFieldValues: developerFieldValues,
+            timestampOverride: timestamp,
+            decodedFile: &decodedFile
+        )
+    }
+
+    /// Decode a normal record header: whether it starts a definition, whether
+    /// that definition has developer fields, and its local type. Reserved bits
+    /// must be clear.
+    private static func normalRecordHeader(
+        _ recordHeader: UInt8
+    ) throws -> (isDefinition: Bool, hasDeveloperData: Bool, localType: UInt8) {
+        let isDefinition = (recordHeader & 0x40) != 0
+        let hasDeveloperData = isDefinition && (recordHeader & 0x20) != 0
+        let localType = recordHeader & 0x0F
+
+        guard recordHeader & 0x10 == 0,
+              isDefinition || recordHeader & 0x20 == 0
+        else {
+            throw FITError.corruptedData(coreLocalized("FIT record header has reserved bits set"))
+        }
+        return (isDefinition, hasDeveloperData, localType)
     }
 
     // MARK: - Header Parsing
@@ -450,6 +491,30 @@ public struct FITParser {
         }
         offset += 1
 
+        let fields = try parseFieldDefinitions(
+            data: data, offset: &offset, dataEndOffset: dataEndOffset, fieldCount: fieldCount
+        )
+
+        let developerFields = try hasDeveloperData
+            ? parseDeveloperFieldDefinitions(data: data, offset: &offset, dataEndOffset: dataEndOffset)
+            : []
+
+        return FITDefinitionMessage(
+            architecture: architecture,
+            globalMessageNumber: globalMessageNumber,
+            fields: fields,
+            developerFields: developerFields
+        )
+    }
+
+    /// Parse the `fieldCount` field definitions of a definition message. A
+    /// field with an unknown base type is read as a byte array.
+    private static func parseFieldDefinitions(
+        data: Data,
+        offset: inout Int,
+        dataEndOffset: Int,
+        fieldCount: Int
+    ) throws -> [FITFieldDefinition] {
         var fields: [FITFieldDefinition] = []
         fields.reserveCapacity(fieldCount)
         for _ in 0..<fieldCount {
@@ -485,51 +550,48 @@ public struct FITParser {
                 baseType: baseType
             ))
         }
+        return fields
+    }
 
-        let developerFields: [FITDeveloperFieldDefinition]
-        if hasDeveloperData {
-            guard offset + 1 <= dataEndOffset else {
+    /// Parse the developer field count and the developer field definitions of
+    /// a definition message that has developer data.
+    private static func parseDeveloperFieldDefinitions(
+        data: Data,
+        offset: inout Int,
+        dataEndOffset: Int
+    ) throws -> [FITDeveloperFieldDefinition] {
+        guard offset + 1 <= dataEndOffset else {
+            throw FITError.unexpectedEndOfFile
+        }
+
+        let developerFieldCount = Int(data[offset])
+        guard developerFieldCount > 0, developerFieldCount <= maxDeveloperFieldCount else {
+            throw FITError.corruptedData(
+                coreLocalized("Developer field count must be between 1 and \(maxDeveloperFieldCount); received \(developerFieldCount)")
+            )
+        }
+        offset += 1
+
+        var parsedDeveloperFields: [FITDeveloperFieldDefinition] = []
+        parsedDeveloperFields.reserveCapacity(developerFieldCount)
+        for _ in 0..<developerFieldCount {
+            guard offset + 3 <= dataEndOffset else {
                 throw FITError.unexpectedEndOfFile
             }
 
-            let developerFieldCount = Int(data[offset])
-            guard developerFieldCount > 0, developerFieldCount <= maxDeveloperFieldCount else {
-                throw FITError.corruptedData(
-                    coreLocalized("Developer field count must be between 1 and \(maxDeveloperFieldCount); received \(developerFieldCount)")
-                )
+            let fieldNumber = data[offset]
+            let fieldSize = data[offset + 1]
+            guard fieldSize > 0 else {
+                throw FITError.corruptedData(coreLocalized("Developer field \(fieldNumber) has zero size"))
             }
-            offset += 1
-
-            var parsedDeveloperFields: [FITDeveloperFieldDefinition] = []
-            parsedDeveloperFields.reserveCapacity(developerFieldCount)
-            for _ in 0..<developerFieldCount {
-                guard offset + 3 <= dataEndOffset else {
-                    throw FITError.unexpectedEndOfFile
-                }
-
-                let fieldNumber = data[offset]
-                let fieldSize = data[offset + 1]
-                guard fieldSize > 0 else {
-                    throw FITError.corruptedData(coreLocalized("Developer field \(fieldNumber) has zero size"))
-                }
-                parsedDeveloperFields.append(FITDeveloperFieldDefinition(
-                    fieldNumber: fieldNumber,
-                    size: fieldSize,
-                    developerDataIndex: data[offset + 2]
-                ))
-                offset += 3
-            }
-            developerFields = parsedDeveloperFields
-        } else {
-            developerFields = []
+            parsedDeveloperFields.append(FITDeveloperFieldDefinition(
+                fieldNumber: fieldNumber,
+                size: fieldSize,
+                developerDataIndex: data[offset + 2]
+            ))
+            offset += 3
         }
-
-        return FITDefinitionMessage(
-            architecture: architecture,
-            globalMessageNumber: globalMessageNumber,
-            fields: fields,
-            developerFields: developerFields
-        )
+        return parsedDeveloperFields
     }
 
     // MARK: - Data Message Parsing

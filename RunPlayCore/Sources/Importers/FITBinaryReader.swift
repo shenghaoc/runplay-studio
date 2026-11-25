@@ -154,6 +154,8 @@ public struct FITBinaryReader {
         baseType: FITBaseType,
         fieldSize: Int
     ) throws -> FITFieldValue {
+        // #lizard forgives(cyclomatic_complexity): an exhaustive mapping from
+        // each FIT base type to its reader and its invalid sentinel.
         switch baseType {
         case .enum:
             let raw = try readUInt8()

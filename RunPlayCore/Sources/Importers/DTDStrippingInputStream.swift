@@ -236,14 +236,7 @@ final class DTDStrippingInputStream: InputStream {
         // Bulk fast path: the DOCTYPE is behind us and nothing is buffered, so
         // let upstream fill the caller's buffer directly with no copy.
         if state == .passthrough, outPos >= out.count, pendingPos >= pending.count, readFailure == nil {
-            ensureUpstreamOpen()
-            let n = upstream.read(buffer, maxLength: len)
-            if n < 0 {
-                recordReadFailure()
-                return -1
-            }
-            if n == 0 { finish() }
-            return n
+            return readUpstreamDirectly(buffer, maxLength: len)
         }
 
         var written = 0
@@ -266,6 +259,19 @@ final class DTDStrippingInputStream: InputStream {
         // it has been handed over, and never as the end of the document.
         if written == 0, readFailure != nil { return -1 }
         return written
+    }
+
+    /// Lets upstream fill the caller's buffer with no copy. A failed read is
+    /// recorded and returns -1; a read of 0 is the end of the stream.
+    private func readUpstreamDirectly(_ buffer: UnsafeMutablePointer<UInt8>, maxLength len: Int) -> Int {
+        ensureUpstreamOpen()
+        let n = upstream.read(buffer, maxLength: len)
+        if n < 0 {
+            recordReadFailure()
+            return -1
+        }
+        if n == 0 { finish() }
+        return n
     }
 
     private func ensureUpstreamOpen() {
@@ -367,20 +373,28 @@ final class DTDStrippingInputStream: InputStream {
                 return false
             }
 
-            switch state {
-            case .leading:
-                if stepLeading() { return true }
-            case .leadingComment:
-                if stepToTerminator(terminator: "-->", state: .leading, emit: true) { return true }
-            case .leadingPI:
-                if stepToTerminator(terminator: "?>", state: .leading, emit: true) { return true }
-            case .doctypeTag:
-                stepDoctypeTag()
-            case .internalSubset:
-                stepInternalSubset()
-            case .passthrough:
-                break // handled above
-            }
+            if stepCurrentState() { return true }
+        }
+    }
+
+    /// Runs one step of every state but passthrough. Returns true when the
+    /// step produced output.
+    private func stepCurrentState() -> Bool {
+        switch state {
+        case .leading:
+            return stepLeading()
+        case .leadingComment:
+            return stepToTerminator(terminator: "-->", state: .leading, emit: true)
+        case .leadingPI:
+            return stepToTerminator(terminator: "?>", state: .leading, emit: true)
+        case .doctypeTag:
+            stepDoctypeTag()
+            return false
+        case .internalSubset:
+            stepInternalSubset()
+            return false
+        case .passthrough:
+            return false // handled by `pump`
         }
     }
 
@@ -505,29 +519,11 @@ final class DTDStrippingInputStream: InputStream {
             // decide, and must not consume a partial terminator.
             switch subsetSkip {
             case .comment:
-                guard have(3) else {
-                    drainUnterminatedSubset()
-                    return
-                }
-                if peek(0) == dash, peek(1) == dash, peek(2) == greaterThan {
-                    consumeSubsetBytes(3)
-                    subsetSkip = .none
-                    continue
-                }
-                consumeSubsetBytes(1)
+                guard stepSubsetComment() else { return }
                 continue
 
             case .processingInstruction:
-                guard have(2) else {
-                    drainUnterminatedSubset()
-                    return
-                }
-                if peek(0) == question, peek(1) == greaterThan {
-                    consumeSubsetBytes(2)
-                    subsetSkip = .none
-                    continue
-                }
-                consumeSubsetBytes(1)
+                guard stepSubsetProcessingInstruction() else { return }
                 continue
 
             case .none:
@@ -537,18 +533,7 @@ final class DTDStrippingInputStream: InputStream {
             // Ordinary subset scanning: decide on the byte at `pendingPos`, but
             // only once enough lookahead exists to classify a `<` marker.
             if awaitingSubsetClose {
-                guard have(1) else { if !refill() { return }; continue }
-                let c = pending[pendingPos]
-                consumeSubsetBytes(1)
-                // Only whitespace is legal between `]` and `>`.
-                if c == greaterThan {
-                    concludeInternalSubset()
-                    return
-                }
-                if c == rightBracket { continue }
-                if c == space || c == tab || c == lineFeed || c == carriageReturn { continue }
-                // A stray `]` not followed by `>`: resume normal scanning.
-                awaitingSubsetClose = false
+                guard stepSubsetClose() else { return }
                 continue
             }
 
@@ -557,9 +542,7 @@ final class DTDStrippingInputStream: InputStream {
                 // cannot be present in a truncated tail, so the subset is
                 // unterminated; drain the remainder and stop.
                 guard refill() else {
-                    // A failed read is not an unterminated subset; `pump` reports it.
-                    if readFailure != nil { return }
-                    while pendingPos < pending.count { consumeSubsetBytes(1) }
+                    drainShortSubsetTail()
                     return
                 }
                 continue
@@ -578,25 +561,87 @@ final class DTDStrippingInputStream: InputStream {
 
             let c = pending[pendingPos]
             consumeSubsetBytes(1)
+            scanSubsetByte(c)
+        }
+    }
 
-            if let quote = subsetQuote {
-                if c == quote { subsetQuote = nil }
-                continue
+    /// One step inside a subset comment: consumes `-->`, or one byte of the
+    /// comment. Returns false when the subset ends unterminated.
+    private func stepSubsetComment() -> Bool {
+        guard have(3) else {
+            drainUnterminatedSubset()
+            return false
+        }
+        if peek(0) == dash, peek(1) == dash, peek(2) == greaterThan {
+            consumeSubsetBytes(3)
+            subsetSkip = .none
+            return true
+        }
+        consumeSubsetBytes(1)
+        return true
+    }
+
+    /// One step inside a subset processing instruction: consumes `?>`, or one
+    /// byte of the instruction. Returns false when the subset ends unterminated.
+    private func stepSubsetProcessingInstruction() -> Bool {
+        guard have(2) else {
+            drainUnterminatedSubset()
+            return false
+        }
+        if peek(0) == question, peek(1) == greaterThan {
+            consumeSubsetBytes(2)
+            subsetSkip = .none
+            return true
+        }
+        consumeSubsetBytes(1)
+        return true
+    }
+
+    /// One step after a `]` that may close the subset. Returns false when the
+    /// subset concluded or the input ended.
+    private func stepSubsetClose() -> Bool {
+        guard have(1) else { return refill() }
+        let c = pending[pendingPos]
+        consumeSubsetBytes(1)
+        // Only whitespace is legal between `]` and `>`.
+        if c == greaterThan {
+            concludeInternalSubset()
+            return false
+        }
+        if c == rightBracket { return true }
+        if c == space || c == tab || c == lineFeed || c == carriageReturn { return true }
+        // A stray `]` not followed by `>`: resume normal scanning.
+        awaitingSubsetClose = false
+        return true
+    }
+
+    /// Consumes the bytes left after upstream ended with fewer than four.
+    private func drainShortSubsetTail() {
+        // A failed read is not an unterminated subset; `pump` reports it.
+        if readFailure != nil { return }
+        while pendingPos < pending.count { consumeSubsetBytes(1) }
+    }
+
+    /// Tracks quotes and brackets for one consumed subset byte: a `]` outside
+    /// quotes and nested brackets may close the subset.
+    private func scanSubsetByte(_ c: UInt8) {
+        if let quote = subsetQuote {
+            if c == quote { subsetQuote = nil }
+            return
+        }
+        switch c {
+        case doubleQuote, singleQuote:
+            subsetQuote = c
+        case leftBracket:
+            subsetBracketDepth += 1
+        case rightBracket:
+            if subsetBracketDepth > 0 {
+                subsetBracketDepth -= 1
+            } else {
+                awaitingSubsetClose = true
             }
-            switch c {
-            case doubleQuote, singleQuote:
-                subsetQuote = c
-            case leftBracket:
-                subsetBracketDepth += 1
-            case rightBracket:
-                if subsetBracketDepth > 0 {
-                    subsetBracketDepth -= 1
-                } else {
-                    awaitingSubsetClose = true
-                }
-            default:
-                break
-            }
+        default:
+            break
         }
     }
 

@@ -244,24 +244,7 @@ enum FITDeveloperFieldResolver {
         records: [FITRecordMessage],
         descriptions: [FITFieldDescriptionMessage]
     ) -> FITDeveloperFieldResolution {
-        // First description per (developer_data_index, field_definition_number)
-        // wins; later duplicates are ignored deterministically.
-        var descriptionTable: [UInt16: FITFieldDescriptionMessage] = [:]
-        descriptionTable.reserveCapacity(descriptions.count)
-        for description in descriptions {
-            guard let developerDataIndex = description.developerDataIndex,
-                  let fieldDefinitionNumber = description.fieldDefinitionNumber
-            else {
-                continue
-            }
-            let key = descriptionKey(
-                developerDataIndex: developerDataIndex,
-                fieldNumber: fieldDefinitionNumber
-            )
-            if descriptionTable[key] == nil {
-                descriptionTable[key] = description
-            }
-        }
+        let descriptionTable = firstDescriptions(descriptions)
 
         var statAccumulators: [UInt16: FieldStatAccumulator] = [:]
         var pointValues: [FITDeveloperPointValues] = []
@@ -298,36 +281,8 @@ enum FITDeveloperFieldResolver {
                 ) else {
                     continue
                 }
-                switch metric {
-                case .power:
-                    if values.powerWatts == nil {
-                        values.powerWatts = physical
-                        values.powerDeveloperDataIndex = raw.developerDataIndex
-                    } else {
-                        conflictingPowerValueCount += 1
-                    }
-                case .groundContactTime:
-                    if values.groundContactTimeMilliseconds == nil {
-                        values.groundContactTimeMilliseconds = physical
-                    }
-                case .verticalOscillation:
-                    if values.verticalOscillationMillimeters == nil {
-                        values.verticalOscillationMillimeters = physical
-                    }
-                case .verticalRatio:
-                    if values.verticalRatioPercent == nil {
-                        values.verticalRatioPercent = physical
-                    }
-                case .stanceTimeBalance:
-                    if values.stanceTimeBalancePercent == nil {
-                        values.stanceTimeBalancePercent = physical
-                    }
-                case .stepLength:
-                    if values.stepLengthMeters == nil {
-                        values.stepLengthMeters = physical
-                    }
-                case .formPower, .legSpringStiffness:
-                    break
+                if !store(metric, physical, developerDataIndex: raw.developerDataIndex, in: &values) {
+                    conflictingPowerValueCount += 1
                 }
             }
 
@@ -351,6 +306,71 @@ enum FITDeveloperFieldResolver {
             invalidValueCount: invalidValueCount,
             conflictingPowerValueCount: conflictingPowerValueCount
         )
+    }
+
+    /// The first description per (developer_data_index, field_definition_number)
+    /// wins; later duplicates are ignored deterministically.
+    private static func firstDescriptions(
+        _ descriptions: [FITFieldDescriptionMessage]
+    ) -> [UInt16: FITFieldDescriptionMessage] {
+        var descriptionTable: [UInt16: FITFieldDescriptionMessage] = [:]
+        descriptionTable.reserveCapacity(descriptions.count)
+        for description in descriptions {
+            guard let developerDataIndex = description.developerDataIndex,
+                  let fieldDefinitionNumber = description.fieldDefinitionNumber
+            else {
+                continue
+            }
+            let key = descriptionKey(
+                developerDataIndex: developerDataIndex,
+                fieldNumber: fieldDefinitionNumber
+            )
+            if descriptionTable[key] == nil {
+                descriptionTable[key] = description
+            }
+        }
+        return descriptionTable
+    }
+
+    /// Stores a recognized metric's value on the point when the point has no
+    /// value for it yet. Returns false only for a second power value, which
+    /// conflicts with the first; every other later value is ignored.
+    private static func store(
+        _ metric: FITDeveloperMetric, _ physical: Double, developerDataIndex: UInt8,
+        in values: inout FITDeveloperPointValues
+    ) -> Bool {
+        switch metric {
+        case .power:
+            if values.powerWatts == nil {
+                values.powerWatts = physical
+                values.powerDeveloperDataIndex = developerDataIndex
+            } else {
+                return false
+            }
+        case .groundContactTime:
+            if values.groundContactTimeMilliseconds == nil {
+                values.groundContactTimeMilliseconds = physical
+            }
+        case .verticalOscillation:
+            if values.verticalOscillationMillimeters == nil {
+                values.verticalOscillationMillimeters = physical
+            }
+        case .verticalRatio:
+            if values.verticalRatioPercent == nil {
+                values.verticalRatioPercent = physical
+            }
+        case .stanceTimeBalance:
+            if values.stanceTimeBalancePercent == nil {
+                values.stanceTimeBalancePercent = physical
+            }
+        case .stepLength:
+            if values.stepLengthMeters == nil {
+                values.stepLengthMeters = physical
+            }
+        case .formPower, .legSpringStiffness:
+            break
+        }
+        return true
     }
 
     /// Decode one captured payload into its physical value, applying the
