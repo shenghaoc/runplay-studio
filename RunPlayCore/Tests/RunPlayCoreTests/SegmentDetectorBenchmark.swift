@@ -40,6 +40,12 @@ final class SegmentDetectorBenchmark: XCTestCase {
     ) throws {
         let workout = RunWorkout(routePoints: makeFixture(pointCount))
         let context = WorkoutAnalysisContext(workout: workout)
+        let config = SegmentDetector.searchConfiguration(
+            points: workout.routePoints, timeline: context.timeline, elevationProfile: context.elevationProfile,
+            policy: .runningDefault
+        )
+        var cppBridgeTimes: [Double] = []
+        var swiftAdapterTimes: [Double] = []
         var oracleSamples: [Double] = []
         var productionSamples: [Double] = []
         var oracleResult: [SegmentHighlight] = []
@@ -61,7 +67,27 @@ final class SegmentDetectorBenchmark: XCTestCase {
                 )
             }
 
+            var cpp: RunPlaySegmentWindowSearchResult?
+            var swift: RunPlaySegmentWindowSearchResult?
+            let cppElapsed = try timeThrowing {
+                cpp = try RunPlaySegmentDetectorCppBridge.search(
+                    routePoints: workout.routePoints, timeline: context.timeline, elevationProfile: context.elevationProfile,
+                    configuration: config, cancellationCheckStride: RouteQualityPolicy.runningDefault.cancellationCheckStride,
+                    isCancelled: { false }
+                )
+            }
+            let swiftElapsed = try timeThrowing {
+                swift = try RunPlaySegmentDetectorAdapter.search(
+                    routePoints: workout.routePoints, timeline: context.timeline, elevationProfile: context.elevationProfile,
+                    configuration: config, cancellationCheckStride: RouteQualityPolicy.runningDefault.cancellationCheckStride,
+                    isCancelled: { false }
+                )
+            }
+            XCTAssertEqual(candidateDigest(try XCTUnwrap(swift)), candidateDigest(try XCTUnwrap(cpp)))
+
             guard iteration >= warmups else { continue }
+            cppBridgeTimes.append(cppElapsed)
+            swiftAdapterTimes.append(swiftElapsed)
             oracleSamples.append(oracleElapsed)
             productionSamples.append(productionElapsed)
         }
@@ -79,15 +105,21 @@ final class SegmentDetectorBenchmark: XCTestCase {
 
         let oracleMedian = median(oracleSamples)
         let productionMedian = median(productionSamples)
+        let cppBridgeMedian = median(cppBridgeTimes)
+        let swiftAdapterMedian = median(swiftAdapterTimes)
+        let ratio = swiftAdapterMedian / max(cppBridgeMedian, 1e-12)
         print("""
 
         RunPlay SegmentDetector benchmark
         fixture: \(pointCount) points, four segments, elevation and heart rate
         \(warmups) warm-ups + \(measurements) measured iterations, medians
         pre-migration Swift oracle: \(format(oracleMedian)) ms
-        production C++23 path:      \(format(productionMedian)) ms
+        complete production Swift:      \(format(productionMedian)) ms
         production / oracle ratio:  \(String(format: "%.3f", productionMedian / max(oracleMedian, 1e-12)))
-        semantic merge gate: exact durable highlight digest parity
+        complete C++ bridge:         \(format(cppBridgeMedian)) ms
+        complete Swift adapter:      \(format(swiftAdapterMedian)) ms
+        performance gate: Swift / C++ \(String(format: "%.3f", ratio)) (at most 1.100)
+        semantic merge gate: exact durable highlight and candidate digest parity
         """)
     }
 
@@ -112,6 +144,19 @@ final class SegmentDetectorBenchmark: XCTestCase {
             ))
         }
         return points
+    }
+
+    private static func candidateDigest(_ result: RunPlaySegmentWindowSearchResult) -> [UInt64] {
+        var words = [
+            UInt64(result.paceEvaluationCount), UInt64(result.elevationEvaluationCount), UInt64(result.candidates.count),
+        ]
+        for c in result.candidates {
+            words.append(UInt64(c.kind.rawValue))
+            words.append(c.startDistanceMeters.bitPattern)
+            words.append(c.endDistanceMeters.bitPattern)
+            words.append(c.selectionValue.bitPattern)
+        }
+        return words
     }
 
     private static func digest(_ segments: [SegmentHighlight]) -> [String] {

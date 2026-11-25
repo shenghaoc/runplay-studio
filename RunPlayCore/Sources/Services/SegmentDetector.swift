@@ -6,9 +6,9 @@ import Foundation
 /// Fastest and slowest windows use active pace. Windows may span recording
 /// gaps, but elevation never connects points from different route segments.
 ///
-/// The C++23 engine selects at most ten winning distance windows — the five
+/// The Swift engine selects at most ten winning distance windows — the five
 /// segment highlights plus five fixed-distance personal-record windows —
-/// through one bulk native call per detection pass. Swift retains public
+/// through one bulk engine call per detection pass. Swift retains public
 /// highlight and record materialization, UUIDs, titles, subtitles, final
 /// range metadata, HR averages, and cancellation.
 public struct SegmentDetector {
@@ -285,7 +285,9 @@ public struct SegmentDetector {
 
     // MARK: - Configuration
 
-    private static func searchConfiguration(
+    // Also consumed by the release adapter comparison so both arms use
+    // exactly the production search policy.
+    static func searchConfiguration(
         points: [RoutePoint],
         timeline: WorkoutTimeline,
         elevationProfile: ElevationProfile,

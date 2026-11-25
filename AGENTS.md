@@ -112,6 +112,8 @@ not import `RunPlayEngineCpp` or `RunPlayEngine` directly.
     call per route
   - the multi-pass `ElevationProfile` build (`EngineElevationProfile`), one
     engine call per profile build
+  - the segment and personal-record window searches (`SegmentDetection`), one
+    engine call per `SegmentDetector` invocation
 
 - **RunPlayEngineCpp** is the portable C++23 computational engine. It uses only
   the C++ standard library (no Apple frameworks, Foundation, Objective-C, or

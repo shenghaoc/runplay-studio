@@ -14,7 +14,7 @@ Every public callable carries exactly one status:
 | `process_route_quality_geometry` | **parity/contract verification** | retained for native tests and `CppRouteQualityOracle` in Core tests; production calls the Swift kernel |
 | `compute_personal_heatmap_workout_coverage` | **production** | called by the personal heatmap builder via `RunPlayPersonalHeatmapCoverageBridge` |
 | `compute_constrained_dtw_path` | **parity/contract verification** | retained for native tests and `RunPlayRouteAlignmentDtwCppBridge` in Core tests; production calls the Swift kernel |
-| `detect_segment_windows` | **production** | called by the segment detector via `RunPlaySegmentDetectorBridge` |
+| `detect_segment_windows` | **parity/contract verification** | retained for native tests and `RunPlaySegmentDetectorCppBridge` in Core tests; production calls the Swift kernel |
 | `build_elevation_profile` | **parity/contract verification** | retained for native tests and `ElevationProfileCppBenchmarkOracle` in Core tests; production calls the Swift kernel |
 | `assign_route_metric_scale_buckets` | **production** | called by `RouteMetricProfileBuilder` (pace/HR) via `RunPlayRouteMetricScaleBucketBridge` |
 | `compute_training_load` | **parity/contract verification** | retained for native tests and the debug-only Core differential test; production calls the Swift kernel |
@@ -242,7 +242,7 @@ consumers. Swift production code outside Interop never touches `runplay.*` symbo
 | `process_route_quality_geometry` | `CppRouteQualityOracle` (Core tests) | none; differential tests and release benchmark only |
 | `compute_personal_heatmap_workout_coverage` | `RunPlayPersonalHeatmapCoverageBridge` | personal heatmap builder (one call per workout per adaptive attempt) |
 | `compute_constrained_dtw_path` | `RunPlayRouteAlignmentDtwCppBridge` (Core tests) | none; differential tests and release benchmark only |
-| `detect_segment_windows` | `RunPlaySegmentDetectorBridge` | segment detector |
+| `detect_segment_windows` | `RunPlaySegmentDetectorCppBridge` (Core tests) | none; differential tests and release benchmark only |
 | `build_elevation_profile` | `ElevationProfileCppBenchmarkOracle` (Core tests) | none; differential tests and release benchmark only |
 | `assign_route_metric_scale_buckets` | `RunPlayRouteMetricScaleBucketBridge` | `RouteMetricProfileBuilder` (pace/HR path) |
 | `compute_training_load` | `TrainingLoadDifferentialTests.swift` | debug differential test only |
