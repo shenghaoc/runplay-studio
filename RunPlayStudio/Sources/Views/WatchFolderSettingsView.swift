@@ -87,8 +87,16 @@ struct WatchFolderSettingsView: View {
                 Text("Remove Folder")
             }
             .help(Text("Removing a folder does not remove imported workouts."))
+            .accessibilityLabel(Self.removeFolderAccessibilityLabel(for: folder.displayName))
         }
         .padding(.vertical, 2)
+    }
+
+    /// Spoken name of a folder's removal button. The visible title stays
+    /// "Remove Folder"; the spoken name tells VoiceOver users which of
+    /// several watched folders the button removes.
+    static func removeFolderAccessibilityLabel(for displayName: String, locale: Locale? = nil) -> String {
+        studioLocalized("Remove \(displayName)", locale: locale)
     }
 
     // MARK: - Folder status
