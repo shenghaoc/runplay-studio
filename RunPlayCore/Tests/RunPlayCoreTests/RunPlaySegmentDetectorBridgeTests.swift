@@ -1,5 +1,6 @@
 import XCTest
 @testable import RunPlayCore
+import RunPlayEngineTestSupport
 
 /// Compares the C++23 bridge candidate selection against the independent
 /// Swift oracle across deterministic generated fixtures.
@@ -12,7 +13,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         _ = RunWorkout(routePoints: points)
         let timeline = WorkoutTimeline(routePoints: points)
         let elevationProfile = ElevationProfile(routePoints: points)
-        let config = makeDefaultConfig(
+        let config = Self.makeDefaultConfig(
             points: points,
             timeline: timeline,
             elevationProfile: elevationProfile
@@ -57,7 +58,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         _ = RunWorkout(routePoints: points)
         let timeline = WorkoutTimeline(routePoints: points)
         let elevationProfile = ElevationProfile(routePoints: points)
-        let config = makeDefaultConfig(
+        let config = Self.makeDefaultConfig(
             points: points,
             timeline: timeline,
             elevationProfile: elevationProfile
@@ -235,7 +236,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         let points = TestFixtures.makeBudgetRoute()
         let timeline = WorkoutTimeline(routePoints: points)
         let elevationProfile = ElevationProfile(routePoints: points)
-        let config = makeDefaultConfig(
+        let config = Self.makeDefaultConfig(
             points: points,
             timeline: timeline,
             elevationProfile: elevationProfile
@@ -260,7 +261,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             let points = SegmentDetectorParityFixtures.generatedFixture(index: index)
             let timeline = WorkoutTimeline(routePoints: points)
             let elevationProfile = ElevationProfile(routePoints: points)
-            let config = makeDefaultConfig(
+            let config = Self.makeDefaultConfig(
                 points: points,
                 timeline: timeline,
                 elevationProfile: elevationProfile
@@ -323,7 +324,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
         let result = try RunPlaySegmentDetectorBridge.search(
             routePoints: [], timeline: WorkoutTimeline(routePoints: []),
             elevationProfile: ElevationProfile(routePoints: []),
-            configuration: makeDefaultConfig(
+            configuration: Self.makeDefaultConfig(
                 points: [],
                 timeline: WorkoutTimeline(routePoints: []),
                 elevationProfile: ElevationProfile(routePoints: [])
@@ -341,7 +342,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
             routePoints: points,
             timeline: WorkoutTimeline(routePoints: points),
             elevationProfile: ElevationProfile(routePoints: points),
-            configuration: makeDefaultConfig(
+            configuration: Self.makeDefaultConfig(
                 points: points,
                 timeline: WorkoutTimeline(routePoints: points),
                 elevationProfile: ElevationProfile(routePoints: points)
@@ -353,7 +354,7 @@ final class RunPlaySegmentDetectorBridgeTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeDefaultConfig(
+    static func makeDefaultConfig(
         points: [RoutePoint],
         timeline: WorkoutTimeline,
         elevationProfile: ElevationProfile

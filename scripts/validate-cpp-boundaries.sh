@@ -1502,37 +1502,55 @@ for layer in RunPlayPlatform/Sources RunPlayStudio/Sources; do
   fi
 done
 
-# --- SegmentDetector bridge --------------------------------------------------
+# --- SegmentDetector Swift engine adapter ------------------------------------
 
-SEGMENT_BRIDGE_SOURCE="RunPlayCore/Sources/Interop/RunPlaySegmentDetectorBridge.swift"
+SEGMENT_ORACLE_SOURCE="RunPlayCore/Tests/RunPlayCoreTests/SegmentDetectionDifferentialTests.swift"
+SEGMENT_ADAPTER_SOURCE="RunPlayCore/Sources/Engine/RunPlaySegmentDetectorAdapter.swift"
+SEGMENT_BRIDGE_SOURCE="$SEGMENT_ADAPTER_SOURCE"
 SEGMENT_DETECTOR_SOURCE="RunPlayCore/Sources/Services/SegmentDetector.swift"
 
-if [[ ! -f "$SEGMENT_BRIDGE_SOURCE" ]]; then
-  fail "missing SegmentDetector bridge $SEGMENT_BRIDGE_SOURCE"
+if [[ ! -f "$SEGMENT_ADAPTER_SOURCE" ]]; then
+  fail "missing SegmentDetector adapter $SEGMENT_ADAPTER_SOURCE"
 else
-  pass "SegmentDetector bridge exists"
+  pass "SegmentDetector Swift engine adapter exists"
 fi
 
-# Only Interop invokes detect_segment_windows
+if [[ -e RunPlayCore/Sources/Interop/RunPlaySegmentDetectorBridge.swift ]]; then
+  fail "the C++ SegmentDetector bridge must live only in $SEGMENT_ORACLE_SOURCE"
+else
+  pass "no C++ SegmentDetector bridge remains in Core sources"
+fi
+
+# Only the named test oracle may invoke the C++ segment-window symbol, at one call site.
 segment_native_re='(^|[^[:alnum:]_])runplay[[:space:]]*\.[[:space:]]*detect_segment_windows([^[:alnum:]_]|$)'
 segment_native_leaks=()
+segment_oracle_calls=0
 for swift_file in "${SWIFT_FILES[@]}"; do
   relative_swift_file="${swift_file#./}"
-  case "$relative_swift_file" in
-    "$SEGMENT_BRIDGE_SOURCE") continue ;;
-    RunPlayCore/Tests/*|RunPlayPlatform/Tests/*|RunPlayStudio/Tests/*) continue ;;
-  esac
   while IFS= read -r leak; do
-    [[ -n "$leak" ]] && segment_native_leaks+=("$relative_swift_file:$leak")
+    [[ -z "$leak" ]] && continue
+    if [[ "$relative_swift_file" == "$SEGMENT_ORACLE_SOURCE" ]]; then
+      segment_oracle_calls=$((segment_oracle_calls + 1))
+    else
+      segment_native_leaks+=("$relative_swift_file:$leak")
+    fi
   done < <(strip_comments "$swift_file" | grep -En "$segment_native_re" || true)
 done
 
-if [[ ${#segment_native_leaks[@]} -eq 0 ]]; then
-  pass "detect_segment_windows is invoked only from the SegmentDetector bridge"
+if [[ ${#segment_native_leaks[@]} -eq 0 && $segment_oracle_calls -eq 1 ]]; then
+  pass "only the segment-detection test oracle calls detect_segment_windows, at one call site"
 else
+  [[ $segment_oracle_calls -eq 1 ]] || fail "expected one detect_segment_windows call in $SEGMENT_ORACLE_SOURCE, found $segment_oracle_calls"
   for leak in "${segment_native_leaks[@]}"; do
-    fail "detect_segment_windows used outside the SegmentDetector bridge: $leak"
+    fail "detect_segment_windows used outside the segment-detection test oracle: $leak"
   done
+fi
+
+# The Swift adapter must call the Swift kernel.
+if code_matches "$SEGMENT_ADAPTER_SOURCE" 'SegmentDetection[[:space:]]*\.[[:space:]]*search[[:space:]]*\('; then
+  pass "segment adapter calls the Swift kernel"
+else
+  fail "segment adapter must call the Swift kernel"
 fi
 
 # SegmentDetector calls only the pure-Swift bridge
@@ -1744,6 +1762,8 @@ else
   # Snapshot may be used only through the bridge; accept either path.
   if code_matches "$SEGMENT_BRIDGE_SOURCE" 'segmentDetectionSnapshot'; then
     pass "SegmentDetector bridge continues to consume pure Swift elevation snapshot"
+  elif code_matches "RunPlayCore/Sources/Engine/RunPlaySegmentDetectorAdapter.swift" 'segmentDetectionSnapshot'; then
+    pass "SegmentDetector Swift engine adapter continues to consume pure Swift elevation snapshot"
   else
     fail "SegmentDetector elevation snapshot consumption missing"
   fi

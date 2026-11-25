@@ -1,10 +1,6 @@
-import Foundation
+internal import RunPlayEngine
 
-// Keep imported C++ declarations confined to the internal Interop layer.
-internal import CxxStdlib
-internal import RunPlayEngineCpp
-
-// MARK: - Pure-Swift types matching the C++ contract
+// MARK: - Pure-Swift types used by Core
 
 enum RunPlaySegmentWindowKind: UInt8, Sendable, Equatable {
     case fastest400m = 0
@@ -74,15 +70,15 @@ struct SegmentDetectorSearchConfiguration: Sendable {
         fastest400mStepMeters: Double,
         oneKilometerDistanceMeters: Double,
         oneKilometerStepMeters: Double,
-        oneMileDistanceMeters: Double = runplay.personal_record_one_mile_meters,
+        oneMileDistanceMeters: Double = SegmentDetection.oneMileMeters,
         oneMileStepMeters: Double = 50,
-        fiveKilometerDistanceMeters: Double = runplay.personal_record_five_km_meters,
+        fiveKilometerDistanceMeters: Double = SegmentDetection.fiveKilometersMeters,
         fiveKilometerStepMeters: Double = 50,
-        tenKilometerDistanceMeters: Double = runplay.personal_record_ten_km_meters,
+        tenKilometerDistanceMeters: Double = SegmentDetection.tenKilometersMeters,
         tenKilometerStepMeters: Double = 50,
-        halfMarathonDistanceMeters: Double = runplay.personal_record_half_marathon_meters,
+        halfMarathonDistanceMeters: Double = SegmentDetection.halfMarathonMeters,
         halfMarathonStepMeters: Double = 50,
-        marathonDistanceMeters: Double = runplay.personal_record_marathon_meters,
+        marathonDistanceMeters: Double = SegmentDetection.marathonMeters,
         marathonStepMeters: Double = 50,
         minimumValidPaceSecondsPerKilometer: Double,
         maximumValidPaceSecondsPerKilometer: Double,
@@ -114,18 +110,17 @@ struct SegmentDetectorSearchConfiguration: Sendable {
     }
 }
 
-// MARK: - Bridge
-
-enum RunPlaySegmentDetectorBridge {
+/// Core owns snapshots, cancellation, model mapping, and diagnostic translation.
+enum RunPlaySegmentDetectorAdapter {
     // Canonical personal-record window lengths, sourced from the engine
     // constants so Swift record identity and the native searches can never
     // drift. Internal because the public model re-exposes them as
     // `PersonalRecordCategory.nominalWindowDistanceMeters`.
-    static let personalRecordOneMileMeters = runplay.personal_record_one_mile_meters
-    static let personalRecordFiveKmMeters = runplay.personal_record_five_km_meters
-    static let personalRecordTenKmMeters = runplay.personal_record_ten_km_meters
-    static let personalRecordHalfMarathonMeters = runplay.personal_record_half_marathon_meters
-    static let personalRecordMarathonMeters = runplay.personal_record_marathon_meters
+    static let personalRecordOneMileMeters = SegmentDetection.oneMileMeters
+    static let personalRecordFiveKmMeters = SegmentDetection.fiveKilometersMeters
+    static let personalRecordTenKmMeters = SegmentDetection.tenKilometersMeters
+    static let personalRecordHalfMarathonMeters = SegmentDetection.halfMarathonMeters
+    static let personalRecordMarathonMeters = SegmentDetection.marathonMeters
 
     static func search(
         routePoints: [RoutePoint],
@@ -151,7 +146,7 @@ enum RunPlaySegmentDetectorBridge {
             )
         }
 
-        return try searchNative(
+        return try searchSwift(
             routePoints: routePoints,
             timeline: timeline,
             elevationProfile: elevationProfile,
@@ -161,7 +156,7 @@ enum RunPlaySegmentDetectorBridge {
         )
     }
 
-    private static func searchNative(
+    private static func searchSwift(
         routePoints: [RoutePoint],
         timeline: WorkoutTimeline,
         elevationProfile: ElevationProfile,
@@ -169,8 +164,84 @@ enum RunPlaySegmentDetectorBridge {
         cancellationCheckStride: Int,
         isCancelled: @Sendable () -> Bool
     ) throws -> RunPlaySegmentWindowSearchResult {
-        let count = routePoints.count
+        let samples = try RunPlaySegmentDetectorAdapter.pack(
+            routePoints: routePoints, timeline: timeline, elevationProfile: elevationProfile,
+            cancellationCheckStride: cancellationCheckStride, isCancelled: isCancelled
+        ) { distance, elapsed, active, ascent, descent, reliableCount, group, run in
+            var sample = SegmentDetectionSample()
+            sample.distance = distance
+            sample.elapsed = elapsed
+            sample.active = active
+            sample.ascent = ascent
+            sample.descent = descent
+            sample.reliableCount = reliableCount
+            sample.continuityGroup = group
+            sample.reliableRun = run
+            return sample
+        }
 
+        let engineConfig = engineConfiguration(configuration)
+
+        if isCancelled() { throw CancellationError() }
+        NativeCallObserver.record(.segmentDetection)
+        let summary: SegmentDetectionResult
+        do {
+            summary = try SegmentDetection.search(samples.span, configuration: engineConfig)
+        } catch {
+            if isCancelled() { throw CancellationError() }
+            switch error {
+            case .resourceLimit: throw RunPlaySegmentDetectorBridgeError.resourceLimit
+            case .invalidConfiguration: throw RunPlaySegmentDetectorBridgeError.invalidConfiguration
+            case .invalidInputContract: throw RunPlaySegmentDetectorBridgeError.invalidInputContract
+            default: throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+            }
+        }
+        if isCancelled() { throw CancellationError() }
+
+        var candidates: [RunPlaySegmentWindowCandidate] = []
+        candidates.reserveCapacity(summary.candidateCount)
+        for index in 0..<summary.candidateCount {
+            let candidate = summary.candidates[index]
+            guard let kind = RunPlaySegmentWindowKind(rawValue: candidate.kind.rawValue) else {
+                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
+            }
+            candidates.append(RunPlaySegmentWindowCandidate(
+                kind: kind, startDistanceMeters: candidate.start,
+                endDistanceMeters: candidate.end, selectionValue: candidate.value
+            ))
+        }
+        return try validateCandidates(
+            candidates, timeline: timeline, configuration: configuration,
+            paceEvaluations: summary.paceEvaluationCount,
+            elevationEvaluations: summary.elevationEvaluationCount
+        )
+    }
+
+    static func engineConfiguration(_ configuration: SegmentDetectorSearchConfiguration) -> SegmentDetectionConfiguration {
+        var engineConfig = SegmentDetectionConfiguration()
+        engineConfig.fastest400m = .init(configuration.fastest400mDistanceMeters, configuration.fastest400mStepMeters)
+        engineConfig.oneKilometer = .init(configuration.oneKilometerDistanceMeters, configuration.oneKilometerStepMeters)
+        engineConfig.oneMile = .init(configuration.oneMileDistanceMeters, configuration.oneMileStepMeters)
+        engineConfig.fiveKilometers = .init(configuration.fiveKilometerDistanceMeters, configuration.fiveKilometerStepMeters)
+        engineConfig.tenKilometers = .init(configuration.tenKilometerDistanceMeters, configuration.tenKilometerStepMeters)
+        engineConfig.halfMarathon = .init(configuration.halfMarathonDistanceMeters, configuration.halfMarathonStepMeters)
+        engineConfig.marathon = .init(configuration.marathonDistanceMeters, configuration.marathonStepMeters)
+        engineConfig.elevation = .init(configuration.elevationWindowDistanceMeters, configuration.elevationStepMeters)
+        engineConfig.minimumPace = configuration.minimumValidPaceSecondsPerKilometer
+        engineConfig.maximumPace = configuration.maximumValidPaceSecondsPerKilometer
+        engineConfig.maximumEvaluations = configuration.maximumEvaluationsPerSearch
+        engineConfig.elevationEnabled = configuration.elevationEnabled ? 1 : 0
+
+        return engineConfig
+    }
+
+    @inline(__always)
+    static func pack<Sample>(
+        routePoints: [RoutePoint], timeline: WorkoutTimeline, elevationProfile: ElevationProfile,
+        cancellationCheckStride: Int, isCancelled: @Sendable () -> Bool,
+        makeSample: (Double, Double, Double, Double, Double, Double, Int32, Int32) -> Sample
+    ) throws -> ContiguousArray<Sample> {
+        let count = routePoints.count
         // Snapshots
         let timelineSnapshot = timeline.segmentDetectionSnapshot()
         let elevationSnapshot = elevationProfile.segmentDetectionSnapshot()
@@ -187,8 +258,8 @@ enum RunPlaySegmentDetectorBridge {
             throw RunPlaySegmentDetectorBridgeError.invalidInputContract
         }
 
-        // Build compact native samples
-        var samples = ContiguousArray<runplay.SegmentDetectionSample>()
+        // Build compact samples in the destination representation.
+        var samples = ContiguousArray<Sample>()
         samples.reserveCapacity(count)
 
         // Compact continuity groups from route-segment transitions
@@ -234,119 +305,36 @@ enum RunPlaySegmentDetectorBridge {
                 mappedRun = -1
             }
 
-            var sample = runplay.SegmentDetectionSample()
-            sample.distance_meters = timelineSnapshot.distancesMeters[index]
-            sample.elapsed_seconds = timelineSnapshot.elapsedSeconds[index]
-            sample.active_seconds = timelineSnapshot.activeSeconds[index]
-            sample.cumulative_ascent_meters = elevationSnapshot.cumulativeAscentMeters[index]
-            sample.cumulative_descent_meters = elevationSnapshot.cumulativeDescentMeters[index]
-            sample.reliable_interval_count = elevationSnapshot.reliableIntervalCounts[index]
-            sample.continuity_group = compactGroup
-            sample.reliable_elevation_run = mappedRun
-
-            samples.append(sample)
+            samples.append(makeSample(
+                timelineSnapshot.distancesMeters[index],
+                timelineSnapshot.elapsedSeconds[index],
+                timelineSnapshot.activeSeconds[index],
+                elevationSnapshot.cumulativeAscentMeters[index],
+                elevationSnapshot.cumulativeDescentMeters[index],
+                elevationSnapshot.reliableIntervalCounts[index],
+                compactGroup,
+                mappedRun
+            ))
         }
 
-        // Native configuration
-        var nativeConfig = runplay.SegmentDetectionConfiguration()
-        nativeConfig.fastest_400m_distance_meters = configuration.fastest400mDistanceMeters
-        nativeConfig.fastest_400m_step_meters = configuration.fastest400mStepMeters
-        nativeConfig.one_kilometer_distance_meters = configuration.oneKilometerDistanceMeters
-        nativeConfig.one_kilometer_step_meters = configuration.oneKilometerStepMeters
-        nativeConfig.one_mile_distance_meters = configuration.oneMileDistanceMeters
-        nativeConfig.one_mile_step_meters = configuration.oneMileStepMeters
-        nativeConfig.five_kilometer_distance_meters = configuration.fiveKilometerDistanceMeters
-        nativeConfig.five_kilometer_step_meters = configuration.fiveKilometerStepMeters
-        nativeConfig.ten_kilometer_distance_meters = configuration.tenKilometerDistanceMeters
-        nativeConfig.ten_kilometer_step_meters = configuration.tenKilometerStepMeters
-        nativeConfig.half_marathon_distance_meters = configuration.halfMarathonDistanceMeters
-        nativeConfig.half_marathon_step_meters = configuration.halfMarathonStepMeters
-        nativeConfig.marathon_distance_meters = configuration.marathonDistanceMeters
-        nativeConfig.marathon_step_meters = configuration.marathonStepMeters
-        nativeConfig.minimum_valid_pace_seconds_per_kilometer = configuration.minimumValidPaceSecondsPerKilometer
-        nativeConfig.maximum_valid_pace_seconds_per_kilometer = configuration.maximumValidPaceSecondsPerKilometer
-        nativeConfig.elevation_window_distance_meters = configuration.elevationWindowDistanceMeters
-        nativeConfig.elevation_step_meters = configuration.elevationStepMeters
-        nativeConfig.maximum_evaluations_per_search = configuration.maximumEvaluationsPerSearch
-        nativeConfig.elevation_enabled = configuration.elevationEnabled ? 1 : 0
+        return samples
+    }
 
-        // Allocate exactly one slot per candidate kind
-        var output = ContiguousArray<runplay.SegmentWindowCandidate>(
-            repeating: runplay.SegmentWindowCandidate(),
-            count: Int(runplay.segment_detection_max_candidate_count)
-        )
-
-        // Cancellation check before native call
-        try checkCancellation(isCancelled: isCancelled)
-
-        // One native call
-        NativeCallObserver.record(.segmentDetection)
-        let summary = samples.withUnsafeBufferPointer { samplesBuffer in
-            output.withUnsafeMutableBufferPointer { outputBuffer in
-                runplay.detect_segment_windows(
-                    samplesBuffer.baseAddress,
-                    samplesBuffer.count,
-                    nativeConfig,
-                    outputBuffer.baseAddress,
-                    outputBuffer.count
-                )
-            }
-        }
-
-        // Cancellation check after native call
-        try checkCancellation(isCancelled: isCancelled)
-
-        // Validate result
-        switch summary.status {
-        case .success:
-            break
-        case .resource_limit:
-            throw RunPlaySegmentDetectorBridgeError.resourceLimit
-        case .invalid_configuration:
-            throw RunPlaySegmentDetectorBridgeError.invalidConfiguration
-        case .invalid_input_contract:
-            throw RunPlaySegmentDetectorBridgeError.invalidInputContract
-        case .invalid_input_buffer,
-             .invalid_output_buffer,
-             .insufficient_output_capacity,
-             .internal_failure:
-            throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-        default:
-            throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-        }
-
-        guard summary.sample_count == UInt64(count) else {
-            throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-        }
-
-        let maximumCandidateCount = Int(runplay.segment_detection_max_candidate_count)
-        guard summary.candidate_count <= UInt64(maximumCandidateCount) else {
-            throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-        }
-        let candidateCount = Int(summary.candidate_count)
-        guard summary.required_output_capacity == UInt64(maximumCandidateCount) else {
-            throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-        }
-
-        // Translate candidates with validation
-        var candidates: [RunPlaySegmentWindowCandidate] = []
-        candidates.reserveCapacity(candidateCount)
+    static func validateCandidates(
+        _ candidates: [RunPlaySegmentWindowCandidate],
+        timeline: WorkoutTimeline, configuration: SegmentDetectorSearchConfiguration,
+        paceEvaluations: UInt64, elevationEvaluations: UInt64
+    ) throws -> RunPlaySegmentWindowSearchResult {
         var seenKinds: Set<RunPlaySegmentWindowKind> = []
-
-        for i in 0..<candidateCount {
-            let c = output[i]
-
-            guard let kind = RunPlaySegmentWindowKind(rawValue: c.kind.rawValue) else {
-                throw RunPlaySegmentDetectorBridgeError.engineContractViolation
-            }
-
+        for c in candidates {
+            let kind = c.kind
             guard seenKinds.insert(kind).inserted else {
                 throw RunPlaySegmentDetectorBridgeError.engineContractViolation
             }
 
-            let startDistance = c.start_distance_meters
-            let endDistance = c.end_distance_meters
-            let value = c.selection_value
+            let startDistance = c.startDistanceMeters
+            let endDistance = c.endDistanceMeters
+            let value = c.selectionValue
 
             guard startDistance.isFinite,
                   endDistance.isFinite,
@@ -401,12 +389,6 @@ enum RunPlaySegmentDetectorBridge {
                 throw RunPlaySegmentDetectorBridgeError.engineContractViolation
             }
 
-            candidates.append(RunPlaySegmentWindowCandidate(
-                kind: kind,
-                startDistanceMeters: startDistance,
-                endDistanceMeters: endDistance,
-                selectionValue: value
-            ))
         }
 
         // Verify deterministic order (kinds appear in expected emission order)
@@ -431,13 +413,13 @@ enum RunPlaySegmentDetectorBridge {
         // seven times that budget.
         let (maximumPaceEvaluations, paceLimitOverflow) =
             configuration.maximumEvaluationsPerSearch.multipliedReportingOverflow(
-                by: UInt64(runplay.segment_pace_search_count))
+                by: SegmentDetection.paceSearchCount)
         guard !paceLimitOverflow,
-              summary.pace_window_evaluation_count <= maximumPaceEvaluations,
-              summary.elevation_window_evaluation_count
+              paceEvaluations <= maximumPaceEvaluations,
+              elevationEvaluations
                 <= configuration.maximumEvaluationsPerSearch,
-              let paceEvalCount = Int(exactly: summary.pace_window_evaluation_count),
-              let elevEvalCount = Int(exactly: summary.elevation_window_evaluation_count)
+              let paceEvalCount = Int(exactly: paceEvaluations),
+              let elevEvalCount = Int(exactly: elevationEvaluations)
         else {
             throw RunPlaySegmentDetectorBridgeError.engineContractViolation
         }
@@ -449,11 +431,7 @@ enum RunPlaySegmentDetectorBridge {
         )
     }
 
-    private static func checkCancellation(
-        isCancelled: @Sendable () -> Bool
-    ) throws {
-        if isCancelled() {
-            throw CancellationError()
-        }
-    }
 }
+
+// Preserve the service call site and pre-removal architecture validator.
+typealias RunPlaySegmentDetectorBridge = RunPlaySegmentDetectorAdapter

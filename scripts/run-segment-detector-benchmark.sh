@@ -10,12 +10,23 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "Building and running the release SegmentDetector benchmark..."
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
 
-RUNPLAY_BENCHMARK=1 \
+if ! RUNPLAY_BENCHMARK=1 \
 RUNPLAY_BENCHMARK_PRODUCT_LIMIT="${RUNPLAY_BENCHMARK_PRODUCT_LIMIT:-0}" \
 swift test \
   -c release \
   --filter SegmentDetectorBenchmark \
-  2>&1 | sed -n '/RunPlay SegmentDetector benchmark/,/semantic merge gate/p'
+  >"$log" 2>&1; then
+  cat "$log" >&2
+  exit 1
+fi
+sed -n '/RunPlay SegmentDetector benchmark/,/semantic merge gate/p' "$log"
+if ! grep -Eq "Test Case .*testSegmentDetectorBenchmark.* passed" "$log"; then
+  cat "$log" >&2
+  echo "Expected one executed SegmentDetectorBenchmark test." >&2
+  exit 1
+fi
 
 echo "Benchmark complete."
