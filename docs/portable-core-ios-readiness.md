@@ -39,20 +39,19 @@ inspection" — but nothing has been linked, tested, or run on iOS. See
 
 ## What is platform-neutral in source
 
-- **`RunPlayEngineCpp`** is portable C++23 using only the C++ standard library.
-  No Apple framework, Foundation, Objective-C, or third-party dependency appears
-  in the engine or its native tests. `scripts/validate-cpp-boundaries.sh` fails
-  any engine source that imports an Apple framework, and the native tests build
-  with plain `clang++` on macOS and Linux.
+- **`RunPlayEngine`** is pure Swift using only the Swift standard library and
+  the platform C math module. No Apple framework, Foundation, or third-party
+  dependency appears in the engine. `scripts/validate-swift-engine-boundaries.py`
+  fails any engine source that imports anything else, and the engine and its
+  tests build with SwiftPM on macOS and Linux.
 - **`RunPlayCore`** is cross-platform Swift: Foundation, a conditional
   `FoundationXML` import, and a single `canImport(Darwin)` guard
   (`Services/RouteMetricColorModels.swift`). It imports no UI, map, graphics,
   Core Location, or Combine. `RunPlayCore` plus its tests are the complete
   Swift-facing package graph on Linux, and Linux CI exercises them on every PR —
   which is the strongest existing evidence that Core is not macOS-bound.
-- **Validators** (`validate-cpp-boundaries.sh`, `validate-cpp-public-ast.py`,
-  `run-cpp-engine-tests.sh`) use `clang++`, `perl`, and `find`; nothing in them
-  is macOS-specific.
+- **The validator** (`validate-swift-engine-boundaries.py`) uses `python3` and
+  `swift package dump-package`; nothing in it is macOS-specific.
 
 ### FoundationXML
 
@@ -120,8 +119,9 @@ rather than an assumption:
 The public `RunPlayCore` model layer is value-typed and already annotated for
 concurrency and persistence: roughly 110 `Sendable`, 77 `Hashable`, and 55
 `Codable` conformances across `RunPlayCore/Sources/Models/`. None of these
-conformances depend on an Apple-only type, and no C++ type appears in a public
-`RunPlayCore` API (enforced per header family by the boundary validator). No
+conformances depend on an Apple-only type, and no engine type appears in a public
+`RunPlayCore` API (the engine's declarations have `package` access and Core
+imports it with `internal import`). No
 iOS-specific work is expected here.
 
 ## Apple-only paths
@@ -165,6 +165,12 @@ One experiment was actually run, against the iOS Simulator SDK on an Apple
 silicon host (Swift 6.4, iPhoneSimulator 27.0 SDK, triple
 `arm64-apple-ios18.0-simulator`). It is recorded here because its *failure mode*
 is the useful part.
+
+The experiment predates the pure Swift engine: at the time the engine was the
+C++23 target `RunPlayEngineCpp`, which no longer exists, and Core imported it
+through C++ interoperability. The record below is unchanged and describes that
+package. The experiment has not been repeated with `RunPlayEngine`; the manifest
+finding (no declared iOS platform) does not depend on the engine's language.
 
 **1. Whole-package SwiftPM build — fails at link, not at compile.**
 
@@ -216,17 +222,17 @@ portable and that the remaining work is packaging, not rewriting.
   resolves with `RunPlayPlatform`/`RunPlayStudio` gated appropriately — today
   their sources are guarded for Linux with `#if os(macOS)`, which would also
   exclude them on iOS and needs a deliberate decision rather than an accident.
-- Run the portable suites against an iOS-derived toolchain: the strict engine
-  build, `RunPlayEngineCppTests`, `RunPlayCoreTests`, the native tests normal and
-  `--sanitize`, and the boundary/AST validators.
-- Re-validate the Swift facade audit on the new platform: only
-  `RunPlayCore/Sources/Interop/` imports `RunPlayEngineCpp`; no C++ type escapes
-  into public `RunPlayCore` APIs; pointer buffers stay nonescaping within the
-  synchronous native call.
-- Keep the C++ interop setting (`cxxInteropSettings`) on the Core target and its
-  tests, matching the macOS graph.
-- Preserve cooperative cancellation: native calls are synchronous and
-  non-callback, so cancellation checks must stay in Swift around each native
+- Run the portable suites against an iOS-derived toolchain: the engine build,
+  `RunPlayEngineTests` (plain and under AddressSanitizer), `RunPlayCoreTests`,
+  and the engine boundary validator.
+- Re-validate the engine boundary on the new platform: only `RunPlayCore`
+  imports `RunPlayEngine`, with `internal import`; no engine type escapes into
+  public `RunPlayCore` APIs; engine inputs stay borrowed for one synchronous
+  call. Check that each kernel's golden digest holds, or pin a digest for the
+  new platform after an explicit review: transcendental results come from the
+  platform C math library.
+- Preserve cooperative cancellation: engine calls are synchronous and
+  non-callback, so cancellation checks must stay in Core around each engine
   call, never inside it.
 - Adopt sandbox-appropriate file access (security-scoped bookmarks, document
   picker) for imports, and decide `FileWorkoutLibraryStore`'s Data Protection

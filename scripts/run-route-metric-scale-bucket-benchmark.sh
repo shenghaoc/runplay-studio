@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release benchmark for the C++23 route-metric numeric finalizer.
+# Release benchmark for the engine route-metric numeric finalizer.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

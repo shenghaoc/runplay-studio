@@ -46,7 +46,7 @@ public struct RouteQualityProcessor: Sendable {
     ) throws -> RouteQualityResult {
         // Central preflight. Importers reject oversized routes at their own
         // boundaries, but programmatic callers reach this directly — fail here
-        // before building the 264-byte-per-point native buffer rather than at
+        // before building the per-point engine input buffer rather than at
         // the engine's higher internal ceiling.
         try WorkoutImportResourceLimits.validateRoutePointCount(sourcePoints.count)
 
@@ -70,9 +70,8 @@ public struct RouteQualityProcessor: Sendable {
             )
         }
 
-        // Stages 2–4 run through one bulk Swift geometry call. Stage 1 ordering
-        // is converted once; production does not call the transitional
-        // step-distance bridge and does not fall back to the retired C++ geometry path.
+        // Stages 2–4 run through one bulk engine geometry call. Stage 1 ordering
+        // is converted once.
         let geometry = try RunPlayRouteQualityBridge.process(
             ordered,
             policy: policy,

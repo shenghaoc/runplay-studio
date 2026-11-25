@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Diagnostic only. Production `analyze` / `normalizeAndAnalyze` never collect
 /// these values. Only test-visible profiled entry points populate a profile, and
-/// only when tests request them. Contains no C++ types and no global state.
+/// only when tests request them. Contains no engine types and no global state.
 struct WorkoutAnalysisPhaseProfile: Sendable, Equatable {
     /// Route-quality geometry + elevation from `normalizeAndAnalyze` only.
     var routeQualityNanoseconds: UInt64 = 0

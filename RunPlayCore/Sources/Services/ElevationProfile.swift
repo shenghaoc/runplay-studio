@@ -251,7 +251,7 @@ public struct ElevationProfile: Sendable {
             }
             let point = routePoints[index]
             let result = native.samples[index]
-            // The bridge applies the same rule when it builds the native input.
+            // The adapter applies the same rule when it builds the engine input.
             let sourceIsDEM = point.analysisDEMAltitudeMeters != nil
             if sourceIsDEM {
                 sourceCounts.demPointCount += 1
@@ -479,7 +479,7 @@ public struct ElevationProfile: Sendable {
     // MARK: - Segment-detection snapshot
 
     /// Lightweight copy-on-write snapshot of elevation arrays consumed by
-    /// the C++23 SegmentDetector window-search kernel.
+    /// the engine SegmentDetector window-search kernel.
     struct ElevationSegmentDetectionSnapshot: Sendable {
         let cumulativeAscentMeters: [Double]
         let cumulativeDescentMeters: [Double]
@@ -488,7 +488,7 @@ public struct ElevationProfile: Sendable {
     }
 
     /// Returns the exact internal elevation arrays through copy-on-write so
-    /// the segment-detection bridge can build compact native input without
+    /// the segment-detection bridge can build compact engine input without
     /// recomputing any elevation values.
     func segmentDetectionSnapshot()
         -> ElevationSegmentDetectionSnapshot

@@ -92,7 +92,7 @@ package struct TrainingLoadSummary {
 package enum TrainingLoadError: Error, Equatable {
     case invalidPolicy
     case invalidInputContract
-    // Mirrors the native status; neither kernel currently emits it.
+    // Kept from the former C++ status set; the kernel does not throw it.
     case internalFailure
 }
 

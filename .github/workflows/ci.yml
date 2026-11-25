@@ -110,7 +110,7 @@ jobs:
       - name: Self-test the lane selector
         run: ./scripts/ci-select-lanes.sh --self-test
 
-  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + C++
+  # Full stack: macOS-only targets (RunPlayPlatform + RunPlayStudio) + the
   # engine, in one call of the reusable macOS verification workflow (the same
   # one the Release lane and the nightly call). macOS runners are the
   # bottleneck (about two run at once), so a PR pays for at most one macOS
@@ -131,19 +131,19 @@ jobs:
       localization: true
       test-filter: ${{ needs.changes.outputs.macos_test_filter }}
 
-  # RunPlayCore + portable C++ engine — test on Linux for cross-platform
+  # RunPlayCore + the pure Swift engine — test on Linux for cross-platform
   # validation. Linux CI is container-only by policy: every Linux job that
   # needs Swift runs the one official Swift image pinned below (Swift
   # 6.3.3, the version Xcode 26.6 bundles), so the tag lives in exactly one
   # place and bumping it is a one-line change. The ubuntu-26.04 host
   # contributes only the kernel and the Docker daemon; nothing from the
   # runner image exists inside the container, which is why the explicit
-  # python3 install below is required (validate-cpp-boundaries.sh drives
-  # its AST checks with it) — do not remove it. The digest pins the exact
+  # python3 install below is required (validate-swift-engine-boundaries.py
+  # runs on it) — do not remove it. The digest pins the exact
   # image manifest; refresh it together with the tag on every bump.
   # Dependabot cannot track this (its github-actions ecosystem only
   # updates `uses:`); Renovate can, via a regex manager anchored here.
-  # Both suites (tests and ASan+UBSan sanitizers) share this one job so
+  # Both suites (tests and the AddressSanitizer run) share this one job so
   # the image pin stays single-sourced; the matrix keeps them as separate
   # parallel checks.
   core-linux:
@@ -226,31 +226,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-swift-${{ steps.toolchain.outputs.version }}-${{ steps.toolchain.outputs.id }}-spm-
       # The image is minimal and nothing from the runner exists inside it;
-      # validate-cpp-boundaries.sh drives its AST checks with python3 and
-      # clang++ (in the image). The validator is a static source check over
-      # Core, Platform and Studio, so it runs in the tests leg whenever the
-      # job runs, including for a Studio-only PR that skips the Linux steps.
+      # validate-swift-engine-boundaries.py needs python3. The validator is a
+      # static source check over Core, Platform and Studio, so it runs in the
+      # tests leg whenever the job runs, including for a Studio-only PR that
+      # skips the Linux steps.
       - name: Install container dependencies
         if: matrix.suite == 'tests'
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends python3
-      - name: Validate C++ architecture boundaries
-        if: matrix.suite == 'tests'
-        run: ./scripts/validate-cpp-boundaries.sh
-      # The Swift engine import boundary is a static source check too, so it
-      # runs wherever the C++ validator runs.
       - name: Validate Swift engine boundaries
         if: matrix.suite == 'tests'
         run: python3 scripts/validate-swift-engine-boundaries.py
       - name: Print Swift version
         if: needs.changes.outputs.linux == 'true'
         run: swift --version
-      - name: Print Clang version
-        if: needs.changes.outputs.linux == 'true'
-        run: |
-          clang --version || true
-          clang++ --version || true
       # SwiftPM itself can segfault in libdispatch while it plans a build
       # (#199), so every SwiftPM build below — the Core gate's `swift test`
       # too, inside linux-container-verify.sh — runs through
@@ -262,17 +252,6 @@ jobs:
       - name: Self-test SwiftPM crash retry
         if: needs.changes.outputs.linux == 'true'
         run: ./scripts/retry-swiftpm-libdispatch-crash.sh --self-test
-      - name: Build RunPlayEngineCpp
-        if: needs.changes.outputs.linux == 'true'
-        run: >-
-          ./scripts/retry-swiftpm-libdispatch-crash.sh
-          swift build --target RunPlayEngineCpp
-          -Xcxx -Wall
-          -Xcxx -Wextra
-          -Xcxx -Wpedantic
-          -Xcxx -Wconversion
-          -Xcxx -Wsign-conversion
-          -Xcxx -Wshadow
       # The pure Swift engine's own suite. The Core gate below filters to
       # RunPlayCoreTests, so the engine tests need this step on Linux; on
       # macOS the full suite runs them. Warnings are errors through the
@@ -282,14 +261,17 @@ jobs:
         run: |
           ./scripts/retry-swiftpm-libdispatch-crash.sh swift build --target RunPlayEngine
           ./scripts/retry-swiftpm-libdispatch-crash.sh swift test --filter RunPlayEngineTests
-      - name: Run native C++ engine tests
-        if: (matrix.suite == 'tests') && needs.changes.outputs.linux == 'true'
-        run: >-
-          ./scripts/retry-swiftpm-libdispatch-crash.sh
-          swift test --filter RunPlayEngineCppTests
-      - name: Native C++ tests under ASan + UBSan
+      # The engine holds every unsafe buffer access in the package, so its
+      # suite also runs under AddressSanitizer. The sanitized build has its
+      # own scratch path: it shares nothing with the tests leg. LeakSanitizer
+      # stays on; its suppressions name only frames of corelibs XCTest's own
+      # test discovery and suite setup (see the file).
+      - name: Swift engine tests under AddressSanitizer
         if: (matrix.suite == 'sanitizers') && needs.changes.outputs.linux == 'true'
-        run: ./scripts/run-cpp-engine-tests.sh --sanitize
+        run: >-
+          LSAN_OPTIONS="suppressions=$PWD/scripts/lsan-xctest-discovery.supp"
+          ./scripts/retry-swiftpm-libdispatch-crash.sh
+          swift test --sanitize=address --filter RunPlayEngineTests
       # The Core gate is the script, not a bare `swift test`: a bare run exits
       # 0 however many tests skipped, so only the script's skip-reason
       # allowlist and executed-test floor turn a mass skip into a failure.
@@ -342,7 +324,7 @@ jobs:
   #
   # `changes` and `lint` must report `success`. The selected lanes (macos and
   # core-linux) may report `skipped` ONLY when `changes` said that lane is
-  # off. core-linux runs when linux OR macos is on (it carries the C++
+  # off. core-linux runs when linux OR macos is on (it carries the engine
   # boundary validator, which Studio-only PRs need), so it may be skipped
   # only when both are off: a skip is accepted when it was planned. When `changes` said
   # a lane is on, only `success` passes, so a skip from a changed condition,

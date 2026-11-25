@@ -1,5 +1,12 @@
 # RunPlay Studio — Phase Plan
 
+> **Note (2026-11-25):** the C++23 engine `RunPlayEngineCpp` and all Swift/C++
+> interoperability were removed. Every kernel now runs in the pure Swift target
+> `RunPlayEngine`. Earlier entries that name `RunPlayEngineCpp`, C++, native
+> calls, bridges, or caller-owned buffers describe the state at their time. See
+> [architecture.md](architecture.md) and [engine.md](engine.md) for the current
+> state.
+
 ## Completed Phases
 
 ### Foundation ✅
@@ -152,6 +159,13 @@
 - [ ] iPhone companion exporter (future)
 
 ### Phase: Portable C++23 Engine Migration
+
+> **Note (2026-11-25):** this phase is history. The C++23 kernels listed here
+> were replaced by a literal translation in the pure Swift `RunPlayEngine`
+> target: same kernel boundaries, constants, operation order, and limitations.
+> The checklist entries below keep their original wording. The ownership
+> paragraphs after the checklist are updated to name the engine.
+
 - [x] `RunPlayEngineCpp` C++23 foundation, native tests, ASan/UBSan, boundary validation
 - [x] `RouteInputSample` bulk route-value boundary with Swift/C++ field parity
 - [x] C++23 geodesy primitives (coordinate validation, Haversine distance, local-metre projection) with Swift parity coverage
@@ -166,9 +180,10 @@
 - [x] **Migrate ElevationProfile to C++23**: one bulk multi-pass call performs source screening, spike/excursion rejection, supported fill, run classification, distance-domain smoothing, and deadband-confirmed cumulative ascent/descent; Swift retains public models, UUIDs, distance queries, policy, cancellation, and persistence. Exact oracle parity required; no schema or analysis-version change.
 - [x] **Migrate pace and heart-rate route-metric scale/bucket work to C++23**: one allocation-free bulk call per pace/HR finalization performs deterministic distance-weighted lower/median/upper scale construction, numeric normalization, bucket assignment, coverage accumulation, and numeric summary construction via a typed caller-owned eligible workspace plus output buffer. Corrected elevation intentionally retains Swift numeric finalization after production A/B showed a native regression above the hard gate (mode-owned ownership, not a fallback). Swift retains raw extraction, smoothing, localized labels, public profiles, availability/caching, Platform line coalescing, cancellation, diagnostics, UI, and persistence. Exact parity is required; no schema, analysis-version, normalization-version, importer, or public API change. Compatibility corrections keep the full public Swift `Int` `bucketCount` domain (`std::int64_t`), positive-infinite valid coverage, individually positive-infinite weights as valid but not quantile-eligible, and a no-sort fast path when a scale is known to be impossible.
 - [x] **Final portable-core cleanup** (mandatory endpoint): transitional step-distance boundary removed entirely, public C++ boundary inventory, raw-pointer exception review, dead Swift oracle/duplicate removal, benchmark inventory, sanitizer matrix, package-consumer smoke, architecture docs, future iOS portability review.
+- [x] **Replace the C++23 engine with the pure Swift `RunPlayEngine`** (2026-11-25): every kernel ported as a literal translation behind the same one-call boundaries; inputs are borrowed `Span`s, outputs return by value, failures are typed errors; `RunPlayEngineCpp`, the interop layer, and the C++ validators and tests are removed; per-kernel golden digests derived from the C++ kernels pin the outputs. One decided difference: route-metric scale buckets keep source order for equal sort keys, so an equal-weight `+0`/`-0` tie has one result on every platform.
 - [ ] **Legacy SceneKit projection remains low priority** unless it regains a shipped caller
 
-**Rejected for C++ migration (remain Swift)** — see also `docs/architecture.md`:
+**Rejected for engine migration at the time (remain in Swift Core)** — see also `docs/architecture.md`:
 
 - `MetricSmoother` alone: sub-ms / small absolute cost.
 - Import parsers (JSON/GPX/TCX/FIT) as C++ kernels: XML/binary decode is Foundation-bound; end-to-end import is not dominated by a portable numeric core once normalization/analysis is separated. TCX XML parse+build is expensive in absolute terms but is not a good C++23 engine candidate.
@@ -191,17 +206,17 @@ Swift performs route-size validation, basic field sanitization, sorting,
 initial source-segment compaction, source-speed validation,
 diagnostics translation, public models, and persistence.
 
-C++ performs production outlier evidence, isolated-point rejection, implicit
-gap inference, final segment compaction, supplied-distance policy, and
-normalized cumulative distances through one bulk call.
+The engine performs production outlier evidence, isolated-point rejection,
+implicit gap inference, final segment compaction, supplied-distance policy, and
+normalized cumulative distances through one engine call.
 
-No scalar per-point Swift/C++ production calls are allowed. No persisted schema,
-analysis version, UI, or importer behaviour changes in this cutover.
+No scalar per-point engine calls are allowed in production. No persisted schema,
+analysis version, UI, or importer behaviour changed in this cutover.
 
 #### Route-Aware comparison ownership after the DTW cutover
 
-C++ performs the bounded band-packed constrained-DTW path solve for Route-Aware
-comparison.
+The engine performs the bounded band-packed constrained-DTW path solve for
+Route-Aware comparison.
 
 Swift continues to build the compact alignment samples, detect route direction,
 construct alignment blocks, calculate diagnostics and quality, maintain the
@@ -209,19 +224,20 @@ in-memory cache and task lifecycle, and publish the public alignment models.
 
 Bounds are maximum 2,000 samples per route and maximum 4,000,000 band cells.
 One call occurs per alignment attempt; no calls occur per dynamic-programming
-cell or row. Both inputs and the path output are Swift-owned buffers; C++
-retains no pointer and performs no callback, and on any failure status the
-output buffer is left completely unchanged. Cancellation is checked before and
-after the native call and during conversion and output translation, never
-inside the native call. Alignment sample construction, aligned metrics, and the
-remaining comparison logic have not migrated.
+cell or row. Core owns both inputs; the engine borrows them, retains nothing,
+performs no callback, and returns the path by value. A failed solve throws a
+typed error and returns no path. Cancellation is checked before and
+after the engine call and during conversion and output translation, never
+inside the engine call. Alignment sample construction, aligned metrics, and the
+remaining comparison logic stay in Core.
 
 #### Why geometry stages migrated as one phase
 
 Each crossing of the engine boundary pays a fixed conversion tax — building the
 `RouteInputSample` batch and converting the result back — that does not scale
 with how much work happens after conversion. On a 100,000-point fixture that
-tax was roughly 0.9 ms of a bridge call. Migrating each geometric
+tax was roughly 0.9 ms of a bridge call (measured against the C++ kernel at
+the time). Migrating each geometric
 stage separately would pay it repeatedly; migrating them together pays it once.
 
 The combined kernel reuses internal pairwise step logic directly. Product limit
@@ -231,6 +247,12 @@ The combined kernel reuses internal pairwise step logic directly. Product limit
 against the complete combined bridge (including conversion).
 
 #### Why cross-workout heatmap aggregation stays in Swift
+
+> **Note (2026-11-25):** this section records the decision as made against the
+> C++ coverage kernel. The Swift engine returns the cell array by value, so the
+> caller-owned output buffer, capacity retries, and nonescaping Interop closure
+> described below no longer exist. The decision and its contract reasons still
+> hold: Core increments the counts dictionary directly from the returned cells.
 
 `scripts/run-personal-heatmap-profile.sh` decomposes one production-equivalent
 Personal Heatmap build into additive phases, retaining every adaptive pass and

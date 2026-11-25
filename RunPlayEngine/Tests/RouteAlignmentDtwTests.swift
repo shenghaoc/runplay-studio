@@ -131,11 +131,10 @@ struct RouteAlignmentDtwTests {
         #expect(policy.maximumConsecutiveWarpSteps == 0)
         #expect(policy.maximumBandCells == 0)
         // No zeroed success summary exists; only a successful solve can make
-        // the owned output. Its first path cell has the native default fields.
+        // the owned output.
     }
 
     @Test func test_buffer_contracts() throws {
-        // Span cannot describe a positive count with a null pointer.
         Self.rejected(.invalidInputContract, [], Self.six)
         Self.rejected(.invalidInputContract, Self.six, [])
         Self.rejected(.invalidInputContract, [], [])

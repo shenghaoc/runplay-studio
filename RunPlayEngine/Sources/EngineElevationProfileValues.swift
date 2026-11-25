@@ -10,7 +10,7 @@ package struct EngineElevationProfileInput: Sendable {
     package let distanceMeters: Double
     package let altitudeMeters: Double
     package let continuityGroup: Int32
-    // Keep the native tag contract for typed validation, including malformed inputs.
+    // Keep the byte tag contract of the former C++ kernel for typed validation, including malformed inputs.
     package let hasAltitude: UInt8
 
     package init(distanceMeters: Double, altitudeMeters: Double, continuityGroup: Int32, hasAltitude: UInt8) {

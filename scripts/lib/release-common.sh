@@ -32,8 +32,6 @@ RUNPLAY_RESOURCE_BUNDLE_NAMES="RunPlayStudio_RunPlayStudio.bundle RunPlayStudio_
 # development language. Must match Packaging/RunPlayStudio-Info.plist.in.
 # shellcheck disable=SC2034 # sourced by bundle assembly and verification scripts
 RUNPLAY_LOCALIZATIONS="en zh-Hans zh-Hant"
-# shellcheck disable=SC2034 # sourced by the release-manifest writer
-RUNPLAY_CPP_STANDARD="C++23"
 
 # Max practical CFBundleVersion digit length (prevents absurd values).
 RUNPLAY_MAX_BUILD_NUMBER_DIGITS=9

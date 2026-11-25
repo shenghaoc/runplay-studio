@@ -2,9 +2,9 @@ import Foundation
 
 /// Production Swift numeric scale/bucket finalizer for corrected elevation.
 ///
-/// Pace and heart-rate finalization use the C++23 bulk kernel. Corrected
-/// elevation intentionally remains in Swift because same-machine production
-/// A/B showed a native regression above the 1.05× hard gate. This is a
+/// Pace and heart-rate finalization use the engine bulk kernel. Corrected
+/// elevation intentionally remains in Core because same-machine production
+/// A/B of the former C++ kernel showed a regression above the 1.05× hard gate. This is a
 /// mode-owned implementation decision, not an error-driven fallback.
 ///
 /// Semantics match the pre-migration Swift implementation and the independent

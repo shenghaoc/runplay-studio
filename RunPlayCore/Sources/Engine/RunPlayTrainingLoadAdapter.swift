@@ -94,14 +94,14 @@ enum RunPlayTrainingLoadBridge {
         try checkCancellation(isCancelled)
         let computed: Result<TrainingLoadSummary, TrainingLoadError>
         do throws(TrainingLoadError) {
-            // The scoped test tally counts the actual kernel call, not C++ interop.
-            NativeCallObserver.record(.trainingLoad)
+            // The scoped test tally counts the kernel call.
+            EngineCallObserver.record(.trainingLoad)
             let value = try TrainingLoadKernel.compute(input.span, policy: policy)
             computed = .success(value)
         } catch {
             computed = .failure(error)
         }
-        // The previous bridge checked cancellation before translating the status.
+        // Cancellation is checked before the status is translated.
         try checkCancellation(isCancelled)
         let summary: TrainingLoadSummary
         switch computed {

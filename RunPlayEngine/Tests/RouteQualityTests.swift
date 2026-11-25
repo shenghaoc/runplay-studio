@@ -53,8 +53,6 @@ struct RouteQualityTests {
         #expect(empty.samples.isEmpty)
         #expect(empty.totalDistance.bitPattern == 0)
 
-        // Null input/output with nonzero count and insufficient caller-owned capacity
-        // have no Swift representation; C++ keeps those pointer cases until removal.
         let one = sample(0, 0, 0)
         #expect(try process([one]).samples.count == 1)
         let oversized = Array(repeating: one, count: EngineRouteLimits.maxRouteInputSamples + 1)

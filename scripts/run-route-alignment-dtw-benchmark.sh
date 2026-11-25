@@ -7,13 +7,11 @@
 # prefix/suffix, and warp-heavy — plus a per-fixture and total comparison of:
 #
 #   1. complete Swift path oracle
-#   2. complete C++ bridge (conversion + native solve + output validation)
-#   3. native kernel alone, on already-converted inputs (attribution only)
-#   4. complete Swift adapter (conversion + solve + output validation)
-#   5. complete ConstrainedDynamicTimeWarpingAligner on a workout pair
+#   2. complete engine adapter (conversion + solve + output validation)
+#   3. complete ConstrainedDynamicTimeWarpingAligner on a workout pair
 #
-# The migration gate is measurement 4 versus measurement 2 (at most 1.10x).
-# Debug timings for a band-packed dynamic-programming sweep are meaningless —
+# The timings are absolute: the C++ kernel that the adapter was gated against
+# (at most 1.10x) no longer exists. Debug timings for a band-packed dynamic-programming sweep are meaningless —
 # always release.
 #
 # Optional worst-case probe:
@@ -21,8 +19,8 @@
 #   RUNPLAY_BENCHMARK_MAX_BAND=1 scripts/run-route-alignment-dtw-benchmark.sh
 #
 # adds a deterministic fixture that packs ~3.93 M band cells against the
-# 4,000,000-cell policy ceiling and reports the band-cell count, native median,
-# native maximum, complete bridge duration, and peak resident memory. It costs
+# 4,000,000-cell policy ceiling and reports the band-cell count, the adapter
+# median and maximum, and peak resident memory. It costs
 # roughly 40 MB of engine-side state, so it is opt-in and is not part of
 # ordinary CI. RUNPLAY_BENCHMARK_PRODUCT_LIMIT=1 also probes a one-million-point
 # synthetic workout through the same production compact-sampling limit.

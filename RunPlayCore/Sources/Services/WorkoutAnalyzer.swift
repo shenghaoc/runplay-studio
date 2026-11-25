@@ -198,7 +198,7 @@ public struct WorkoutAnalyzer: Sendable {
         try throwIfCancelled(isCancelled)
 
         // Training load depends on the summary (active time and speed) and
-        // one native call over same-segment heart-rate intervals, read through
+        // one engine call over same-segment heart-rate intervals, read through
         // the workout's single heart-rate accessor.
         workout.trainingLoad = try TrainingLoadCalculator.compute(
             for: workout,

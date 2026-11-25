@@ -113,7 +113,7 @@ struct SegmentDetectorSearchConfiguration: Sendable {
 /// Core owns snapshots, cancellation, model mapping, and diagnostic translation.
 enum RunPlaySegmentDetectorAdapter {
     // Canonical personal-record window lengths, sourced from the engine
-    // constants so Swift record identity and the native searches can never
+    // constants so record identity and the engine searches can never
     // drift. Internal because the public model re-exposes them as
     // `PersonalRecordCategory.nominalWindowDistanceMeters`.
     static let personalRecordOneMileMeters = SegmentDetection.oneMileMeters
@@ -183,7 +183,7 @@ enum RunPlaySegmentDetectorAdapter {
         let engineConfig = engineConfiguration(configuration)
 
         if isCancelled() { throw CancellationError() }
-        NativeCallObserver.record(.segmentDetection)
+        EngineCallObserver.record(.segmentDetection)
         let summary: SegmentDetectionResult
         do {
             summary = try SegmentDetection.search(samples.span, configuration: engineConfig)

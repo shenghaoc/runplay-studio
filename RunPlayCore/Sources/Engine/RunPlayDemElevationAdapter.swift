@@ -125,7 +125,7 @@ enum RunPlayDemElevationBridge {
 
         // ---- Plan ----
         if isCancelled() { throw CancellationError() }
-        NativeCallObserver.record(.demTilePlanning)
+        EngineCallObserver.record(.demTilePlanning)
         let plan: DemTilePlanResult
         do {
             plan = try DemTilePlanning.plan(samples: samples.span, policy: policy)
@@ -160,7 +160,7 @@ enum RunPlayDemElevationBridge {
 
         // ---- Sample ----
         if isCancelled() { throw CancellationError() }
-        NativeCallObserver.record(.demSampling)
+        EngineCallObserver.record(.demSampling)
         let sampled: DemSamplingResult
         do {
             sampled = try DemElevationSampling.sample(

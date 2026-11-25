@@ -2,14 +2,8 @@ import Testing
 import RunPlayEngine
 import RunPlayEngineTestSupport
 
-/// Ports `RouteMetricScaleBucketTests.cpp` case for case, with the same names
-/// and expected literals.
-///
-/// Unrepresentable by construction (kept in the C++ tests until PR 10):
-/// null input, output or workspace with a nonzero count; an output or workspace
-/// capacity below the sample count; and the "no-scale leaves the caller's
-/// workspace untouched" byte checks. A `Span` cannot pair a positive count with
-/// null storage, and the kernel owns its output and workspace.
+/// Ported case for case from the former C++ `RouteMetricScaleBucketTests.cpp`,
+/// with the same names and expected literals.
 @Suite
 struct RouteMetricScaleBucketTests {
     private typealias Sample = RouteMetricScaleBucketSample
@@ -246,8 +240,8 @@ struct RouteMetricScaleBucketTests {
         #expect(product.samples.last?.sourceIndex == UInt64(productCount - 1), "one million last source")
     }
 
-    /// The C++ result for equal-weight `+0` and `-0` metrics depends on the C++
-    /// library (libc++ selects `-0`, libstdc++ `+0`). Swift's stable sort keeps
+    /// The former C++ result for equal-weight `+0` and `-0` metrics depended on the
+    /// C++ library (libc++ selected `-0`, libstdc++ `+0`). Swift's stable sort keeps
     /// source order, so this result is identical on every platform. Intended
     /// behaviour change, recorded in the Kiro design and the PR.
     @Test func test_signed_zero_tie_is_stable_and_platform_independent() throws {

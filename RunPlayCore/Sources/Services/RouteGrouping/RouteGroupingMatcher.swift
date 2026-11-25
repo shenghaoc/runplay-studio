@@ -3,7 +3,7 @@ import Foundation
 /// Stage-1 candidate filter: cheap geometric admission over route facts.
 ///
 /// Pure arithmetic on `RouteGroupingRouteFacts` — no route-point scans, no
-/// native calls. A pair must pass bounding-box overlap with margin and
+/// engine calls. A pair must pass bounding-box overlap with margin and
 /// start-to-either-endpoint proximity (which admits reversed-direction
 /// runs). A historical distance-ratio bound was removed after measurement:
 /// mutual coverage subsumes it for correctness and it saved 1 solve in
@@ -147,7 +147,7 @@ public struct RouteGroupingMatcher: Sendable {
     /// Direction probe for member marking in the Routes detail list: whether
     /// `member` traverses `representative`'s route in the opposite direction.
     ///
-    /// Uses the same coarse ordered-sequence probe as matching (no native
+    /// Uses the same coarse ordered-sequence probe as matching (no engine
     /// call, no DTW solve), so a reversed closed loop — whose start and
     /// finish coincide — is still detected. The endpoint heuristic is
     /// deliberately not used: it cannot distinguish direction on a loop.

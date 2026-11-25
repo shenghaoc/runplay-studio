@@ -6,8 +6,8 @@ import XCTest
 ///
 /// Uses only APIs that exist on both `origin/main` and the PR head so the
 /// identical source file can be copied into a detached main worktree and run
-/// with the same release command. It does **not** reference the C++ bridge,
-/// native types, or benchmark-only native APIs.
+/// with the same release command. It references no engine
+/// types and no benchmark-only APIs.
 ///
 /// Enable with `RUNPLAY_PRODUCTION_AB=1`. Product-limit fixtures additionally
 /// require `RUNPLAY_PRODUCTION_AB_PRODUCT_LIMIT=1`.

@@ -271,14 +271,14 @@ final class TrainingLoadCalculatorTests: XCTestCase {
     #if DEBUG
     /// Estimated passes make zero native calls; measured passes exactly one.
     ///
-    /// Counts come from `NativeCallObserver.observing`, which scopes a tally
+    /// Counts come from `EngineCallObserver.observing`, which scopes a tally
     /// to the closure, so a concurrently running test cannot contribute to
     /// these numbers. The observer exists only in DEBUG builds, so this one
     /// test is gated while the rest of the suite still compiles and runs in
     /// the release test build.
     func testMeasuredPassMakesOneNativeCallEstimatedMakesNone() throws {
         let measured = (0...40).map { sample(elapsed: Double($0) * 30, rate: 100) }
-        let (_, measuredCounts) = try NativeCallObserver.observing {
+        let (_, measuredCounts) = try EngineCallObserver.observing {
             try TrainingLoadCalculator.compute(
                 heartRateSamples: measured,
                 activeSeconds: 1_200,
@@ -290,7 +290,7 @@ final class TrainingLoadCalculatorTests: XCTestCase {
         XCTAssertEqual(measuredCounts.trainingLoad, 1)
 
         let estimated = [sample(elapsed: 0, rate: nil), sample(elapsed: 1_800, rate: nil)]
-        let (_, estimatedCounts) = try NativeCallObserver.observing {
+        let (_, estimatedCounts) = try EngineCallObserver.observing {
             try TrainingLoadCalculator.compute(
                 heartRateSamples: estimated,
                 activeSeconds: 1_800,

@@ -1,0 +1,299 @@
+#if DEBUG
+import Foundation
+import XCTest
+@testable import RunPlayCore
+
+/// Proves exactly one engine call per production operation for every
+/// production caller, plus zero-call coverage for corrected-elevation
+/// finalization and solid mode (covered in
+/// `RouteMetricScaleBucketParityTests.testNativeCallCountsByMode`).
+///
+/// Counts come from `EngineCallObserver.observing`, which binds a fresh tally to
+/// a task-local for the duration of the closure. Each assertion therefore sees
+/// only the engine calls made by its own operation — a concurrently running test
+/// cannot contribute to the total. The observer exists only in DEBUG builds, so
+/// this whole file is DEBUG-gated too.
+final class EngineCallCardinalityTests: XCTestCase {
+    private let processor = RouteQualityProcessor()
+
+    func testRouteQualityProcessorCallsQualityAndElevationExactlyOnce() throws {
+        let points = makeStraightLinePoints(count: 120)
+
+        let (_, counts) = try EngineCallObserver.observing {
+            try processor.process(points, sortByTimestamp: false)
+        }
+
+        XCTAssertEqual(counts.routeQuality, 1)
+        XCTAssertEqual(counts.elevationProfile, 1)
+    }
+
+    func testElevationProfileBuildCallsNativeExactlyOnce() throws {
+        let points = makeStraightLinePoints(count: 64)
+
+        let (_, counts) = try EngineCallObserver.observing {
+            try ElevationProfile.build(
+                routePoints: points,
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
+        }
+
+        XCTAssertEqual(counts.elevationProfile, 1)
+    }
+
+    func testSegmentDetectorCallsNativeExactlyOnce() throws {
+        let workout = HotspotProfilingFixtures.makeWorkout(options: .init(
+            pointCount: 400,
+            segmentCount: 2,
+            stationaryWindows: true,
+            seed: 1_103,
+            name: "segment-cardinality"
+        ))
+        // Context construction builds an elevation profile through a different
+        // bridge; keeping it outside the scope isolates the segment count.
+        let context = WorkoutAnalysisContext(workout: workout)
+
+        let (highlights, counts) = try EngineCallObserver.observing {
+            try SegmentDetector.detectSegments(
+                from: workout,
+                context: context,
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
+        }
+
+        XCTAssertEqual(counts.segmentDetection, 1)
+        XCTAssertFalse(highlights.isEmpty)
+    }
+
+    func testConstrainedDTWAlignerCallsNativeOncePerAlignmentAttempt() throws {
+        let workout = makeAlignmentWorkout(distanceMeters: 4_000, step: 20)
+
+        let (snapshot, counts) = try EngineCallObserver.observing {
+            try ConstrainedDynamicTimeWarpingAligner().align(
+                primary: workout,
+                comparison: workout,
+                primaryContext: WorkoutAnalysisContext(workout: workout),
+                comparisonContext: WorkoutAnalysisContext(workout: workout)
+            )
+        }
+
+        XCTAssertEqual(counts.routeAlignmentDtw, 1)
+        guard case .available = snapshot.availability else {
+            return XCTFail("Expected an available alignment")
+        }
+    }
+
+    func testPersonalHeatmapBuilderCallsNativeOncePerWorkoutInASinglePass() throws {
+        let line = makeHeatmapLineWorkouts(count: 3)
+        let builder = PersonalHeatmapBuilder()
+
+        let (snapshot, counts) = try EngineCallObserver.observing {
+            try builder.build(
+                workouts: line,
+                configuration: PersonalHeatmapConfiguration(cellSizeMeters: 50)
+            )
+        }
+
+        // Three non-empty workouts, one adaptive pass: one coverage call each.
+        XCTAssertEqual(snapshot.diagnostics.adaptiveResolutionRetries, 0)
+        XCTAssertEqual(counts.personalHeatmapCoverage, 3)
+        XCTAssertEqual(snapshot.statistics.includedWorkoutCount, 3)
+    }
+
+    /// The single-pass test above cannot distinguish "once per workout per
+    /// attempt" from "once per workout, ever". A tight `maximumRenderedCellCount`
+    /// with a fine starting cell size forces the builder to coarsen and re-run
+    /// the whole aggregation, so the rule is checked against a real retry count.
+    ///
+    /// The rule is exactly one engine call per workout per attempt. The Swift
+    /// engine returns the cells it found, so there is no output capacity to
+    /// renegotiate and no second call.
+    func testPersonalHeatmapBuilderCallsEngineOncePerWorkoutPerAdaptiveAttempt() throws {
+        let workoutCount = 3
+        let line = makeHeatmapLineWorkouts(count: workoutCount)
+        let builder = PersonalHeatmapBuilder()
+
+        let (snapshot, counts) = try EngineCallObserver.observing {
+            try builder.build(
+                workouts: line,
+                configuration: PersonalHeatmapConfiguration(
+                    cellSizeMeters: 5,
+                    minimumWorkoutCount: 1,
+                    maximumRenderedCellCount: 8
+                )
+            )
+        }
+
+        let retries = snapshot.diagnostics.adaptiveResolutionRetries
+        XCTAssertGreaterThan(retries, 0, "expected the adaptive loop to coarsen at least once")
+
+        XCTAssertEqual(
+            counts.personalHeatmapCoverage,
+            workoutCount * (retries + 1),
+            "each workout must be covered exactly once on every adaptive attempt"
+        )
+        XCTAssertEqual(snapshot.statistics.includedWorkoutCount, workoutCount)
+    }
+
+    func testEmptyRouteCallsNoNativeElevationOrQuality() throws {
+        let (_, counts) = try EngineCallObserver.observing {
+            try processor.process([], sortByTimestamp: false)
+        }
+
+        XCTAssertEqual(counts.routeQuality, 0)
+        XCTAssertEqual(counts.elevationProfile, 0)
+    }
+
+    /// Guards the isolation property the scoping is there to provide: engine
+    /// work performed outside a scope must not appear inside one.
+    func testDemSamplingPlansOnceAndSamplesOnce() throws {
+        let points = makeStraightLinePoints(count: 50)
+        let (outcome, counts) = try EngineCallObserver.observing {
+            try RunPlayDemElevationBridge.sampleElevations(
+                routePoints: points,
+                grid: demGrid(maximumTileCount: 64),
+                cancellationCheckStride: 2_048,
+                loadTiles: { planned in
+                    planned.map { RunPlayDemDecodedTile(key: $0, heightsMeters: Array(repeating: 12, count: 256)) }
+                },
+                isCancelled: { false }
+            )
+        }
+        guard case .sampled(let result) = outcome else {
+            return XCTFail("a short route fits the budget")
+        }
+        XCTAssertEqual(result.sampledCount, points.count)
+        XCTAssertEqual(counts.demTilePlanning, 1)
+        XCTAssertEqual(counts.demSampling, 1)
+    }
+
+    func testDemSamplingOverBudgetPlansOnlyAndEmptyRouteCallsNothing() throws {
+        let points = makeStraightLinePoints(count: 400)
+        let (_, overBudget) = try EngineCallObserver.observing {
+            try RunPlayDemElevationBridge.sampleElevations(
+                routePoints: points,
+                grid: demGrid(maximumTileCount: 1),
+                cancellationCheckStride: 2_048,
+                loadTiles: { _ in [] },
+                isCancelled: { false }
+            )
+        }
+        XCTAssertEqual(overBudget.demTilePlanning, 1)
+        XCTAssertEqual(overBudget.demSampling, 0, "a route over budget is never sampled")
+
+        let (_, empty) = try EngineCallObserver.observing {
+            try RunPlayDemElevationBridge.sampleElevations(
+                routePoints: [],
+                grid: demGrid(maximumTileCount: 64),
+                cancellationCheckStride: 2_048,
+                loadTiles: { _ in [] },
+                isCancelled: { false }
+            )
+        }
+        XCTAssertEqual(empty.demTilePlanning, 0)
+        XCTAssertEqual(empty.demSampling, 0)
+    }
+
+    /// A correction samples once, then reanalyzes: one elevation build (the
+    /// previous profile is rebuilt only when altitude was discarded at import)
+    /// and one segment detection.
+    func testDemCorrectionPlansSamplesAndRebuildsElevationOnce() throws {
+        var workout = try SyntheticDEMTiles.importedWorkout(recorded: { _ in 100 })
+        let source = SyntheticDEMTiles(height: 250)
+
+        let (_, counts) = try EngineCallObserver.observing {
+            try DEMElevationCorrector().correct(&workout, using: source)
+        }
+
+        XCTAssertEqual(counts.demTilePlanning, 1)
+        XCTAssertEqual(counts.demSampling, 1)
+        XCTAssertEqual(counts.elevationProfile, 1)
+        XCTAssertEqual(counts.segmentDetection, 1)
+        XCTAssertEqual(counts.routeQuality, 0, "stored points are not renormalized")
+    }
+
+    /// Zoom 17 with 16-pixel tiles: each tile spans 360 / 2^17 degrees, about
+    /// 250 m at this latitude, so the 4.4 km 400-point line above crosses
+    /// roughly eighteen tile rows while the 50-point line needs a handful.
+    private func demGrid(maximumTileCount: Int) -> RunPlayDemSamplingGrid {
+        RunPlayDemSamplingGrid(
+            zoom: 17,
+            tileSize: 16,
+            maximumTileCount: maximumTileCount,
+            plausibleElevationMeters: -500...9_000
+        )
+    }
+
+    func testObservationScopeExcludesWorkDoneOutsideIt() throws {
+        let points = makeStraightLinePoints(count: 64)
+
+        _ = try processor.process(points, sortByTimestamp: false)
+
+        let (_, counts) = try EngineCallObserver.observing {
+            try ElevationProfile.build(
+                routePoints: points,
+                policy: .runningDefault,
+                isCancelled: { false }
+            )
+        }
+
+        XCTAssertEqual(counts.elevationProfile, 1)
+        XCTAssertEqual(counts.routeQuality, 0, "work before the scope must not be counted")
+    }
+
+    // MARK: - Helpers
+
+    private func makeStraightLinePoints(count: Int) -> [RoutePoint] {
+        (0..<count).map { index in
+            RoutePoint(
+                timestamp: Date(timeIntervalSince1970: 1_700_000_000 + Double(index) * 10),
+                latitude: 35.6812 + Double(index) * 0.0001,
+                longitude: 139.7671,
+                distanceFromStartMeters: Double(index) * 10,
+                elapsedSeconds: Double(index) * 10,
+                paceSecondsPerKilometer: 300,
+                horizontalAccuracy: 5,
+                routeSegmentIndex: 0
+            )
+        }
+    }
+
+    private func makeAlignmentWorkout(distanceMeters: Double, step: Double) -> RunWorkout {
+        let start = Date()
+        var points: [RoutePoint] = []
+        var d = 0.0
+        while d <= distanceMeters {
+            points.append(RoutePoint(
+                timestamp: start.addingTimeInterval(d / 3),
+                latitude: 37.77 + d / 111_000,
+                longitude: -122.42,
+                distanceFromStartMeters: d,
+                elapsedSeconds: d / 3,
+                paceSecondsPerKilometer: 300
+            ))
+            if d >= distanceMeters { break }
+            d = min(distanceMeters, d + step)
+        }
+        return RunWorkout(routePoints: points)
+    }
+
+    private func makeHeatmapLineWorkouts(count: Int) -> [RunWorkout] {
+        let origin = Date(timeIntervalSinceReferenceDate: 700_000_000)
+        return (0..<count).map { index in
+            let points = (0...12).map { i in
+                let t = Double(i) / 12
+                return RoutePoint(
+                    timestamp: origin.addingTimeInterval(Double(index) * 86_400 + t * 300),
+                    latitude: 1.3 + Double(index) * 0.01,
+                    longitude: 103.80 + t * 0.01,
+                    distanceFromStartMeters: t * 1_000,
+                    elapsedSeconds: t * 300,
+                    routeSegmentIndex: 0
+                )
+            }
+            return RunWorkout(routePoints: points)
+        }
+    }
+}
+#endif
