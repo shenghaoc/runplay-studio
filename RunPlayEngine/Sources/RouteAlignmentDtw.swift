@@ -184,6 +184,10 @@ package enum RouteAlignmentDtw {
         effectiveSampleIntervalMeters: Double,
         policy: RouteAlignmentDtwPolicy
     ) throws(RouteAlignmentDtwError) -> RouteAlignmentDtwPath {
+        // #lizard forgives(cyclomatic_complexity): one ordered operation, the
+        // C++ solve, whose contract checks, band layout, two budget gates,
+        // seeding, fill, endpoint selection and path reconstruction share the
+        // band rows and the cost, step and warp arrays.
         let n = primary.count
         let m = comparison.count
         guard n > 0, m > 0 else { throw .invalidInputContract }

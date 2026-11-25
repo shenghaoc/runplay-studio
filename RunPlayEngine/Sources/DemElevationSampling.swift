@@ -380,31 +380,48 @@ package enum DemTilePlanning {
             // Every tile of the previous footprint is already in `tiles`, so an
             // identical tile set adds nothing.
             if current == previous { continue }
-            for keyIndex in 0..<current.count {
-                let key = current.key(keyIndex)
-                var recent = false
-                for seen in 0..<previous.count { recent = recent || previous.key(seen) == key }
-                if recent { continue }
-                var position = 0
-                var length = tiles.count
-                while length > 0 {
-                    let half = length >> 1
-                    let middle = position + half
-                    if demKeyLess(tiles[middle], key) {
-                        position = middle + 1
-                        length -= half + 1
-                    } else {
-                        length = half
-                    }
-                }
-                if position < tiles.count && tiles[position] == key { continue }
-                if UInt64(tiles.count) >= policy.maximumTileCount { throw .tileBudgetExceeded }
-                tiles.insert(key, at: position)
-            }
+            try insertNewTiles(of: current, besides: previous, into: &tiles, policy: policy)
             previous = current
         }
         result.tiles = tiles
         return result
+    }
+
+    /// Inserts each tile of `current` that is not in `previous` and not yet in
+    /// `tiles` at its ascending position, within the tile budget.
+    @inline(__always)
+    private static func insertNewTiles(
+        of current: DemFootprintTiles, besides previous: DemFootprintTiles,
+        into tiles: inout [DemTileKey], policy: DemSamplingPolicy
+    ) throws(DemTilePlanError) {
+        for keyIndex in 0..<current.count {
+            let key = current.key(keyIndex)
+            var recent = false
+            for seen in 0..<previous.count { recent = recent || previous.key(seen) == key }
+            if recent { continue }
+            let position = insertionPosition(of: key, in: tiles)
+            if position < tiles.count && tiles[position] == key { continue }
+            if UInt64(tiles.count) >= policy.maximumTileCount { throw .tileBudgetExceeded }
+            tiles.insert(key, at: position)
+        }
+    }
+
+    /// The first position in the ascending `tiles` whose key is not less than `key`.
+    @inline(__always)
+    private static func insertionPosition(of key: DemTileKey, in tiles: [DemTileKey]) -> Int {
+        var position = 0
+        var length = tiles.count
+        while length > 0 {
+            let half = length >> 1
+            let middle = position + half
+            if demKeyLess(tiles[middle], key) {
+                position = middle + 1
+                length -= half + 1
+            } else {
+                length = half
+            }
+        }
+        return position
     }
 }
 
@@ -476,6 +493,148 @@ package enum DemElevationSampling {
         return low
     }
 
+    /// Where the bilinear corners of one footprint live: the local column and
+    /// row of each distinct column and row in its tile, whether the columns and
+    /// the rows share one tile, and the directory position of each corner's tile
+    /// (-1 for a tile absent from the directory).
+    private struct CornerLayout {
+        let columnLocal0: Int, columnLocal1: Int
+        let rowLocal0: Int, rowLocal1: Int
+        let sameColumnTile: Bool, sameRowTile: Bool
+        let position00: Int, position01: Int, position10: Int, position11: Int
+    }
+
+    /// A tile and a local index depend on the column or the row alone, so each
+    /// is computed once per distinct column and row. Each distinct tile is
+    /// resolved once: corners that share a tile share its directory position.
+    @inline(__always)
+    private static func cornerLayout(
+        _ footprint: DemPixelFootprint, _ grid: DemTileGrid, tiles: Span<DemTileKey>,
+        cachedPosition: inout Int, hasCached: inout Bool
+    ) -> CornerLayout {
+        let columnTile0 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.column0))
+        let columnTile1 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.column1))
+        let columnLocal0 = Int(grid.localIndex(footprint.column0))
+        let columnLocal1 = Int(grid.localIndex(footprint.column1))
+        let rowTile0 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.row0))
+        let rowTile1 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.row1))
+        let rowLocal0 = Int(grid.localIndex(footprint.row0))
+        let rowLocal1 = Int(grid.localIndex(footprint.row1))
+        let sameColumnTile = footprint.columnCount == 1 || columnTile1 == columnTile0
+        let sameRowTile = footprint.rowCount == 1 || rowTile1 == rowTile0
+        let position00 = findTile(DemTileKey(x: columnTile0, y: rowTile0), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1
+        let position01 = sameColumnTile ? position00
+            : (findTile(DemTileKey(x: columnTile1, y: rowTile0), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1)
+        let position10 = sameRowTile ? position00
+            : (findTile(DemTileKey(x: columnTile0, y: rowTile1), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1)
+        let position11 = sameRowTile ? position01
+            : (sameColumnTile ? position10
+                : (findTile(DemTileKey(x: columnTile1, y: rowTile1), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1))
+        return CornerLayout(
+            columnLocal0: columnLocal0, columnLocal1: columnLocal1, rowLocal0: rowLocal0, rowLocal1: rowLocal1,
+            sameColumnTile: sameColumnTile, sameRowTile: sameRowTile,
+            position00: position00, position01: position01, position10: position10, position11: position11
+        )
+    }
+
+    /// Samples one projectable footprint: resolves its corner tiles, reads the
+    /// corner heights, and writes the status and, when every corner is present
+    /// and plausible, the bilinear elevation.
+    @inline(__always)
+    private static func sampleCorners(
+        _ footprint: DemPixelFootprint, _ grid: DemTileGrid, _ policy: DemSamplingPolicy,
+        tiles: Span<DemTileKey>, tileHeights: Span<Float>, tileSize: Int, heightsPerTile: Int,
+        cachedPosition: inout Int, hasCached: inout Bool, into out: inout DemElevationOutputSample
+    ) {
+        // corner[row * 2 + column]; only non-zero-weight corners are resolved.
+        var corner: (Double, Double, Double, Double) = (0, 0, 0, 0)
+        var missing = false
+        var implausible = false
+        let layout = cornerLayout(footprint, grid, tiles: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached)
+        let plausibleMinimum = policy.minimumPlausibleElevationMeters
+        let plausibleMaximum = policy.maximumPlausibleElevationMeters
+        if footprint.columnCount == 2 && footprint.rowCount == 2 && layout.sameColumnTile && layout.sameRowTile
+            && layout.position00 >= 0 {
+            // The usual case: all four corners are in one present tile.
+            let base = layout.position00 * heightsPerTile
+            corner.0 = Double(tileHeights[base + layout.rowLocal0 * tileSize + layout.columnLocal0])
+            corner.1 = Double(tileHeights[base + layout.rowLocal0 * tileSize + layout.columnLocal1])
+            corner.2 = Double(tileHeights[base + layout.rowLocal1 * tileSize + layout.columnLocal0])
+            corner.3 = Double(tileHeights[base + layout.rowLocal1 * tileSize + layout.columnLocal1])
+            func usable(_ height: Double) -> Bool {
+                height.isFinite && !(height < plausibleMinimum) && !(height > plausibleMaximum)
+            }
+            implausible = !(usable(corner.0) && usable(corner.1) && usable(corner.2) && usable(corner.3))
+        } else {
+            readCorners(
+                footprint, layout, policy, tileHeights: tileHeights, tileSize: tileSize,
+                heightsPerTile: heightsPerTile, corner: &corner, missing: &missing, implausible: &implausible
+            )
+        }
+
+        if missing {
+            out.status = .missingTile
+        } else if implausible {
+            out.status = .implausibleHeight
+        } else {
+            let elevation = bilinearElevation(corner, footprint)
+            out.status = .sampled
+            out.elevationMeters = elevation
+            out.hasElevation = 1
+        }
+    }
+
+    /// Reads the corner heights one corner at a time, for a footprint whose
+    /// corners are not all in one present tile. A corner in an absent tile sets
+    /// `missing`; a non-finite or implausible height sets `implausible`.
+    @inline(__always)
+    private static func readCorners(
+        _ footprint: DemPixelFootprint, _ layout: CornerLayout, _ policy: DemSamplingPolicy,
+        tileHeights: Span<Float>, tileSize: Int, heightsPerTile: Int,
+        corner: inout (Double, Double, Double, Double), missing: inout Bool, implausible: inout Bool
+    ) {
+        for row in 0..<footprint.rowCount {
+            let localRow = row == 0 ? layout.rowLocal0 : layout.rowLocal1
+            for column in 0..<footprint.columnCount {
+                let position = row == 0 ? (column == 0 ? layout.position00 : layout.position01)
+                    : (column == 0 ? layout.position10 : layout.position11)
+                if position < 0 {
+                    missing = true
+                    continue
+                }
+                let localColumn = column == 0 ? layout.columnLocal0 : layout.columnLocal1
+                let offset = position * heightsPerTile + localRow * tileSize + localColumn
+                let height = Double(tileHeights[offset])
+                if !height.isFinite || height < policy.minimumPlausibleElevationMeters
+                    || height > policy.maximumPlausibleElevationMeters {
+                    implausible = true
+                }
+                switch row * 2 + column {
+                case 0: corner.0 = height
+                case 1: corner.1 = height
+                case 2: corner.2 = height
+                default: corner.3 = height
+                }
+            }
+        }
+    }
+
+    /// Interpolates the corner heights across the columns, then across the rows.
+    @inline(__always)
+    private static func bilinearElevation(
+        _ corner: (Double, Double, Double, Double), _ footprint: DemPixelFootprint
+    ) -> Double {
+        let top = footprint.columnCount == 2
+            ? interpolate(corner.0, corner.1, footprint.columnFraction) : corner.0
+        var elevation = top
+        if footprint.rowCount == 2 {
+            let bottom = footprint.columnCount == 2
+                ? interpolate(corner.2, corner.3, footprint.columnFraction) : corner.2
+            elevation = interpolate(top, bottom, footprint.rowFraction)
+        }
+        return elevation
+    }
+
     /// Bilinearly samples Swift-decoded tile heights at every route coordinate.
     /// A tile absent from the directory is not an error: each affected coordinate
     /// reports `.missingTile` and falls back on its own.
@@ -509,88 +668,11 @@ package enum DemElevationSampling {
                 } else if footprint.classification == .outsideProjection {
                     out.status = .outsideProjection
                 } else {
-                    // corner[row * 2 + column]; only non-zero-weight corners are resolved.
-                    // A tile and a local index depend on the column or the row alone,
-                    // so each is computed once per distinct column and row.
-                    var corner: (Double, Double, Double, Double) = (0, 0, 0, 0)
-                    var missing = false
-                    var implausible = false
-                    let columnTile0 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.column0))
-                    let columnTile1 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.column1))
-                    let columnLocal0 = Int(grid.localIndex(footprint.column0))
-                    let columnLocal1 = Int(grid.localIndex(footprint.column1))
-                    let rowTile0 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.row0))
-                    let rowTile1 = UInt32(truncatingIfNeeded: grid.tileIndex(footprint.row1))
-                    let rowLocal0 = Int(grid.localIndex(footprint.row0))
-                    let rowLocal1 = Int(grid.localIndex(footprint.row1))
-                    // Resolve each distinct tile once: corners that share a tile share its
-                    // directory position. -1 marks a tile absent from the directory.
-                    let sameColumnTile = footprint.columnCount == 1 || columnTile1 == columnTile0
-                    let sameRowTile = footprint.rowCount == 1 || rowTile1 == rowTile0
-                    let position00 = findTile(DemTileKey(x: columnTile0, y: rowTile0), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1
-                    let position01 = sameColumnTile ? position00
-                        : (findTile(DemTileKey(x: columnTile1, y: rowTile0), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1)
-                    let position10 = sameRowTile ? position00
-                        : (findTile(DemTileKey(x: columnTile0, y: rowTile1), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1)
-                    let position11 = sameRowTile ? position01
-                        : (sameColumnTile ? position10
-                            : (findTile(DemTileKey(x: columnTile1, y: rowTile1), in: tiles, cachedPosition: &cachedPosition, hasCached: &hasCached) ?? -1))
-                    let plausibleMinimum = policy.minimumPlausibleElevationMeters
-                    let plausibleMaximum = policy.maximumPlausibleElevationMeters
-                    if footprint.columnCount == 2 && footprint.rowCount == 2 && sameColumnTile && sameRowTile && position00 >= 0 {
-                        // The usual case: all four corners are in one present tile.
-                        let base = position00 * heightsPerTile
-                        corner.0 = Double(tileHeights[base + rowLocal0 * tileSize + columnLocal0])
-                        corner.1 = Double(tileHeights[base + rowLocal0 * tileSize + columnLocal1])
-                        corner.2 = Double(tileHeights[base + rowLocal1 * tileSize + columnLocal0])
-                        corner.3 = Double(tileHeights[base + rowLocal1 * tileSize + columnLocal1])
-                        func usable(_ height: Double) -> Bool {
-                            height.isFinite && !(height < plausibleMinimum) && !(height > plausibleMaximum)
-                        }
-                        implausible = !(usable(corner.0) && usable(corner.1) && usable(corner.2) && usable(corner.3))
-                    } else {
-                    for row in 0..<footprint.rowCount {
-                        let localRow = row == 0 ? rowLocal0 : rowLocal1
-                        for column in 0..<footprint.columnCount {
-                            let position = row == 0 ? (column == 0 ? position00 : position01) : (column == 0 ? position10 : position11)
-                            if position < 0 {
-                                missing = true
-                                continue
-                            }
-                            let localColumn = column == 0 ? columnLocal0 : columnLocal1
-                            let offset = position * heightsPerTile + localRow * tileSize + localColumn
-                            let height = Double(tileHeights[offset])
-                            if !height.isFinite || height < policy.minimumPlausibleElevationMeters
-                                || height > policy.maximumPlausibleElevationMeters {
-                                implausible = true
-                            }
-                            switch row * 2 + column {
-                            case 0: corner.0 = height
-                            case 1: corner.1 = height
-                            case 2: corner.2 = height
-                            default: corner.3 = height
-                            }
-                        }
-                    }
-                    }
-
-                    if missing {
-                        out.status = .missingTile
-                    } else if implausible {
-                        out.status = .implausibleHeight
-                    } else {
-                        let top = footprint.columnCount == 2
-                            ? interpolate(corner.0, corner.1, footprint.columnFraction) : corner.0
-                        var elevation = top
-                        if footprint.rowCount == 2 {
-                            let bottom = footprint.columnCount == 2
-                                ? interpolate(corner.2, corner.3, footprint.columnFraction) : corner.2
-                            elevation = interpolate(top, bottom, footprint.rowFraction)
-                        }
-                        out.status = .sampled
-                        out.elevationMeters = elevation
-                        out.hasElevation = 1
-                    }
+                    sampleCorners(
+                        footprint, grid, policy, tiles: tiles, tileHeights: tileHeights,
+                        tileSize: tileSize, heightsPerTile: heightsPerTile,
+                        cachedPosition: &cachedPosition, hasCached: &hasCached, into: &out
+                    )
                 }
                 switch out.status {
                 case .sampled: sampled += 1

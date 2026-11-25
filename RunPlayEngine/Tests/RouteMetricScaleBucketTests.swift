@@ -207,13 +207,20 @@ struct RouteMetricScaleBucketTests {
         }
     }
 
-    @Test func test_determinism_and_large_inputs() throws {
-        let ordinaryCount = 100_000
+    /// 100,000 ordinary intervals: 97 repeating metric values, every eleventh with zero weight.
+    private static let ordinaryCount = 100_000
+    private static func ordinaryLargeInput() -> [Sample] {
         var input = [Sample](repeating: Sample(), count: ordinaryCount)
         for index in 0..<ordinaryCount {
             let metric = Double(index % 97) - 48.0
             input[index] = Self.sample(metric, index % 11 == 0 ? 0.0 : 1.0)
         }
+        return input
+    }
+
+    @Test func test_determinism_of_large_input() throws {
+        let ordinaryCount = Self.ordinaryCount
+        let input = Self.ordinaryLargeInput()
         let one = try Self.assign(input)
         let two = try Self.assign(input)
         for index in 0..<ordinaryCount {
@@ -228,7 +235,11 @@ struct RouteMetricScaleBucketTests {
             && one.noDataIntervalCount == two.noDataIntervalCount && one.lowerBound == two.lowerBound
             && one.median == two.median && one.upperBound == two.upperBound && one.hasScale == two.hasScale,
             "repeated summary deterministic")
+    }
 
+    @Test func test_large_no_scale_and_product_limit_inputs() throws {
+        let ordinaryCount = Self.ordinaryCount
+        let input = Self.ordinaryLargeInput()
         let noScale = try Self.assign(input, Self.policy(0.0, 1.0, 0.0, UInt64(ordinaryCount) + 1, 7))
         #expect(!noScale.hasScale, "100k no-scale has no scale")
         #expect(noScale.noDataIntervalCount == UInt64(ordinaryCount), "100k no-scale all no-data")

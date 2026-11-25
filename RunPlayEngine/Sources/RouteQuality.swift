@@ -38,11 +38,18 @@ package struct EngineRouteQualityPolicy {
     }
 
     fileprivate var isValid: Bool {
+        hasFiniteValues && hasValuesInRange
+    }
+
+    private var hasFiniteValues: Bool {
         maximumRunningSpeed.isFinite && usefulAccuracy.isFinite
             && minimumSpikeExcess.isFinite && minimumSpikeDistortion.isFinite
             && poorAccuracyMultiplier.isFinite && minimumGapDistance.isFinite
             && minimumGapInterval.isFinite && minimumGapRatio.isFinite && maximumClusterStep.isFinite
-            && maximumRunningSpeed >= 0 && usefulAccuracy >= 0 && minimumSpikeExcess >= 0
+    }
+
+    private var hasValuesInRange: Bool {
+        maximumRunningSpeed >= 0 && usefulAccuracy >= 0 && minimumSpikeExcess >= 0
             && minimumGapDistance >= 0 && minimumGapInterval >= 0 && maximumClusterStep >= 0
             && minimumSpikeDistortion >= 1 && minimumGapRatio >= 1
             && poorAccuracyMultiplier >= 0 && poorAccuracyMultiplier <= 1
@@ -156,12 +163,7 @@ package enum EngineRouteQuality {
         var previousSegment: Int64 = -1
         for index in 0..<samples.count {
             let sample = samples[index]
-            guard EngineGeodesy.isValidCoordinate(latitude: sample.latitude, longitude: sample.longitude),
-                  sample.timestampSecondsSinceReferenceDate.isFinite,
-                  sample.elapsedSeconds.isFinite,
-                  sample.elapsedSeconds >= 0,
-                  sample.elapsedSeconds >= previousElapsed
-            else { return false }
+            guard hasValidFixAndTime(sample, previousElapsed: previousElapsed) else { return false }
             previousElapsed = sample.elapsedSeconds
             let segment = sample.routeSegmentIndex
             guard segment >= 0 else { return false }
@@ -171,18 +173,40 @@ package enum EngineRouteQuality {
                 expectedSegment = 0
                 continue // The first point's optional accuracy is not checked, as in the former C++ kernel.
             }
-            guard segment >= previousSegment else { return false }
-            if segment > previousSegment {
-                guard segment == previousSegment + 1 else { return false }
-                expectedSegment = segment
-            } else if segment != expectedSegment {
+            guard continuesSegments(segment, previous: &previousSegment, expected: &expectedSegment) else {
                 return false
             }
-            previousSegment = segment
             if let accuracy = sample.horizontalAccuracy, !accuracy.isFinite || accuracy < 0 {
                 return false
             }
         }
+        return true
+    }
+
+    /// A valid coordinate, finite times, and an elapsed time that does not go back.
+    @inline(__always)
+    private static func hasValidFixAndTime(_ sample: EngineRouteInputSample, previousElapsed: Double) -> Bool {
+        guard EngineGeodesy.isValidCoordinate(latitude: sample.latitude, longitude: sample.longitude),
+              sample.timestampSecondsSinceReferenceDate.isFinite,
+              sample.elapsedSeconds.isFinite,
+              sample.elapsedSeconds >= 0,
+              sample.elapsedSeconds >= previousElapsed
+        else { return false }
+        return true
+    }
+
+    /// Whether `segment` stays in the previous segment or starts the next one;
+    /// records it as the previous segment when it does.
+    @inline(__always)
+    private static func continuesSegments(_ segment: Int64, previous: inout Int64, expected: inout Int64) -> Bool {
+        guard segment >= previous else { return false }
+        if segment > previous {
+            guard segment == previous + 1 else { return false }
+            expected = segment
+        } else if segment != expected {
+            return false
+        }
+        previous = segment
         return true
     }
 
@@ -241,6 +265,29 @@ package enum EngineRouteQuality {
         return anyNeighbour
     }
 
+    /// Whether `candidate` is a spike: both of its legs are too fast for running, the
+    /// bridge that skips it is not, and the detour is long and distorted enough.
+    @inline(__always)
+    private static func isSpikeCandidate(
+        _ previous: EngineRouteInputSample, _ candidate: EngineRouteInputSample,
+        _ next: EngineRouteInputSample, _ policy: EngineRouteQualityPolicy
+    ) -> Bool {
+        guard previous.routeSegmentIndex == candidate.routeSegmentIndex,
+              candidate.routeSegmentIndex == next.routeSegmentIndex,
+              let inbound = impliedSpeed(previous, candidate), inbound > policy.maximumRunningSpeed,
+              let outbound = impliedSpeed(candidate, next), outbound > policy.maximumRunningSpeed,
+              let bridge = impliedSpeed(previous, next), bridge <= policy.maximumRunningSpeed
+        else { return false }
+        let inboundDistance = distance(previous, candidate)
+        let outboundDistance = distance(candidate, next)
+        let bridgeDistance = distance(previous, next)
+        let pathDistance = inboundDistance + outboundDistance
+        let distortion = pathDistance / firstOnMaxTie(1, bridgeDistance)
+        let accuracySupports = poorAccuracySupportsRejection(previous, candidate, next, policy)
+        let requiredExcess = policy.minimumSpikeExcess * (accuracySupports ? policy.poorAccuracyMultiplier : 1)
+        return pathDistance - bridgeDistance >= requiredExcess && distortion >= policy.minimumSpikeDistortion
+    }
+
     private static func markCandidates(
         _ samples: borrowing Span<EngineRouteInputSample>, _ output: inout MutableSpan<EngineRouteQualityOutput>,
         _ policy: EngineRouteQualityPolicy
@@ -248,23 +295,7 @@ package enum EngineRouteQuality {
         guard samples.count >= 3 else { return }
         let interior = 1..<(samples.count - 1)
         for index in interior {
-            let previous = samples[index - 1]
-            let candidate = samples[index]
-            let next = samples[index + 1]
-            guard previous.routeSegmentIndex == candidate.routeSegmentIndex,
-                  candidate.routeSegmentIndex == next.routeSegmentIndex,
-                  let inbound = impliedSpeed(previous, candidate), inbound > policy.maximumRunningSpeed,
-                  let outbound = impliedSpeed(candidate, next), outbound > policy.maximumRunningSpeed,
-                  let bridge = impliedSpeed(previous, next), bridge <= policy.maximumRunningSpeed
-            else { continue }
-            let inboundDistance = distance(previous, candidate)
-            let outboundDistance = distance(candidate, next)
-            let bridgeDistance = distance(previous, next)
-            let pathDistance = inboundDistance + outboundDistance
-            let distortion = pathDistance / firstOnMaxTie(1, bridgeDistance)
-            let accuracySupports = poorAccuracySupportsRejection(previous, candidate, next, policy)
-            let requiredExcess = policy.minimumSpikeExcess * (accuracySupports ? policy.poorAccuracyMultiplier : 1)
-            if pathDistance - bridgeDistance >= requiredExcess && distortion >= policy.minimumSpikeDistortion {
+            if isSpikeCandidate(samples[index - 1], samples[index], samples[index + 1], policy) {
                 output[index].rejected = true
             }
         }
@@ -456,12 +487,10 @@ extension EngineRouteQuality {
         var first = nextRetained(output.span, from: 0)
         while first < samples.count {
             let scan = scanSegment(samples, output.span, start: first, segment: output[first].normalizedSegmentIndex)
-            let useSupplied = switch policy {
-            case .coordinates: false
-            case .allSupplied: allSegmentsValid
-            case .suppliedPerSegment: scan.suppliedValid
-            case .suppliedForSelection: selection[first] != 0 && scan.suppliedValid
-            }
+            let useSupplied = usesSuppliedDistance(
+                policy, allSegmentsValid: allSegmentsValid, selection: selection, at: first,
+                suppliedValid: scan.suppliedValid
+            )
             if useSupplied { suppliedCount += 1 }
             let source: EngineRouteDistanceSource = useSupplied ? .supplied : .coordinates
             let suppliedBase = samples[first].distanceFromStartMeters
@@ -489,13 +518,33 @@ extension EngineRouteQuality {
             first = nextRetained(output.span, from: scan.end)
         }
 
-        let source: EngineRouteDistanceSource = if suppliedCount == 0 {
+        return (routeDistanceSource(suppliedCount: suppliedCount, segmentCount: segmentCount), cumulativeDistance)
+    }
+
+    /// Whether the segment that starts at `first` takes its distances from the
+    /// supplied values under `policy`. `selection` is read only for
+    /// `.suppliedForSelection`; it is empty for every other policy.
+    @inline(__always)
+    private static func usesSuppliedDistance(
+        _ policy: EngineRouteDistancePolicy, allSegmentsValid: Bool, selection: borrowing Span<UInt8>,
+        at first: Int, suppliedValid: Bool
+    ) -> Bool {
+        switch policy {
+        case .coordinates: false
+        case .allSupplied: allSegmentsValid
+        case .suppliedPerSegment: suppliedValid
+        case .suppliedForSelection: selection[first] != 0 && suppliedValid
+        }
+    }
+
+    /// The route's distance source from how many of its segments used supplied distances.
+    private static func routeDistanceSource(suppliedCount: Int, segmentCount: Int) -> EngineRouteDistanceSource {
+        if suppliedCount == 0 {
             .coordinates
         } else if suppliedCount == segmentCount {
             .supplied
         } else {
             .mixed
         }
-        return (source, cumulativeDistance)
     }
 }
