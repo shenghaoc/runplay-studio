@@ -2453,22 +2453,6 @@
         }
       }
     },
-    "Cannot list workouts directory: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法列出运动文件目录：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法列出運動檔案目錄：%@"
-          }
-        }
-      }
-    },
     "Cannot merge a route into itself." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2481,22 +2465,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法將路線合併到其自身。"
-          }
-        }
-      }
-    },
-    "Cannot read file: %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法读取文件：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法讀取檔案：%@"
           }
         }
       }
@@ -10849,60 +10817,6 @@
         }
       }
     },
-    "Workout %@… corrupted — skipped" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "运动 %@… 已损坏 — 已跳过"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "運動 %@… 已損毀 — 已略過"
-          }
-        }
-      }
-    },
-    "Workout %@… error: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Workout %1$@… error: %2$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "运动 %1$@… 错误：%2$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "運動 %1$@… 錯誤：%2$@"
-          }
-        }
-      }
-    },
-    "Workout %@… file missing — skipped" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "运动 %@… 文件缺失 — 已跳过"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "運動 %@… 檔案遺失 — 已略過"
-          }
-        }
-      }
-    },
     "Workout %@… route quality could not be upgraded: %@" : {
       "localizations" : {
         "en" : {
@@ -10921,28 +10835,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "運動 %1$@… 無法升級路線品質：%2$@"
-          }
-        }
-      }
-    },
-    "Workout %@… unexpected error: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Workout %1$@… unexpected error: %2$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "运动 %1$@… 意外错误：%2$@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "運動 %1$@… 未預期的錯誤：%2$@"
           }
         }
       }
