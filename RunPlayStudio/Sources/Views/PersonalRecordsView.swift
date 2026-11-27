@@ -78,7 +78,6 @@ struct PersonalRecordsView: View {
         .pickerStyle(.menu)
         .frame(maxWidth: 240)
         .help("Limit records to the whole library, the current All Runs query, or one smart collection")
-        .accessibilityLabel("Records scope")
     }
 
     /// Picks scope; a smart-collection tag needs the collection to still exist.

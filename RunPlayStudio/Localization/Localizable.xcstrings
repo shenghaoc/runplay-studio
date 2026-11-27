@@ -10492,22 +10492,6 @@
         }
       }
     },
-    "Inspect trends period" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查看趋势时段"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "檢視趨勢期間"
-          }
-        }
-      }
-    },
     "Interval type" : {
       "localizations" : {
         "zh-Hans" : {
@@ -15160,22 +15144,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法計算個人紀錄。\n%@"
-          }
-        }
-      }
-    },
-    "Records scope" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "个人纪录范围"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "個人紀錄範圍"
           }
         }
       }
@@ -19973,38 +19941,6 @@
         }
       }
     },
-    "Trends period" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "趋势周期"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "趨勢週期"
-          }
-        }
-      }
-    },
-    "Trends range" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "趋势时间范围"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "趨勢時間範圍"
-          }
-        }
-      }
-    },
     "Trends ready. %lld runs included." : {
       "localizations" : {
         "en" : {
@@ -20035,22 +19971,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "趨勢已就緒。已納入 %lld 次跑步。"
-          }
-        }
-      }
-    },
-    "Trends scope" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "趋势范围"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "趨勢範圍"
           }
         }
       }
