@@ -306,6 +306,18 @@ final class WatchFolderCoordinatorTests: XCTestCase {
         XCTAssertEqual(recorder.recordedURLs.count, 0)
     }
 
+    func testSetDefaultTagNormalisesAndPersists() throws {
+        let (coordinator, _, _) = makeCoordinator()
+        defer { coordinator.shutdown() }
+        XCTAssertTrue(coordinator.addFolder(url: watchedDir))
+        let id = try XCTUnwrap(coordinator.folders.first?.id)
+        coordinator.setDefaultTag("\t Garmin \n", folderID: id)
+        XCTAssertEqual(coordinator.folders.first?.defaultTagName, "Garmin")
+        XCTAssertEqual(FileWatchFolderStore(rootURL: libraryRoot).loadOrEmpty().folders.first?.defaultTagName, "Garmin")
+        coordinator.setDefaultTag("   ", folderID: id)
+        XCTAssertEqual(coordinator.folders.first?.defaultTagName, "")
+    }
+
     // MARK: - Folder availability
 
     func testFolderRemovedWhileWatchingIsReportedOnceAndRecovers() async throws {

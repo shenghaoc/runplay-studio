@@ -67,6 +67,14 @@ final class WatchFolderStoreTests: XCTestCase {
         XCTAssertEqual(loaded.states, snapshot.states)
     }
 
+    func testTagNameNormalisationTrimsAndDropsControlCharacters() {
+        XCTAssertEqual(WatchFolderConfiguration.normalizedTagName("  Garmin  "), "Garmin")
+        XCTAssertEqual(WatchFolderConfiguration.normalizedTagName("\tActivities"), "Activities")
+        XCTAssertEqual(WatchFolderConfiguration.normalizedTagName("Long\tRuns\n"), "LongRuns")
+        XCTAssertEqual(WatchFolderConfiguration.normalizedTagName(" \t\n "), "")
+        XCTAssertEqual(WatchFolderConfiguration.normalizedTagName("Easy runs"), "Easy runs")
+    }
+
     func testCorruptFileFallsBackToEmpty() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
